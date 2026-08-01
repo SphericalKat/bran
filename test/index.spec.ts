@@ -11,19 +11,17 @@ import worker from "../src/index";
 // `Request` to pass to `worker.fetch()`.
 const IncomingRequest = Request<unknown, IncomingRequestCfProperties>;
 
-describe("Hello World worker", () => {
-	it("responds with Hello World! (unit style)", async () => {
+describe("Fortagram worker", () => {
+	it("responds with a health check (unit style)", async () => {
 		const request = new IncomingRequest("http://example.com");
-		// Create an empty context to pass to `worker.fetch()`.
 		const ctx = createExecutionContext();
 		const response = await worker.fetch(request, env, ctx);
-		// Wait for all `Promise`s passed to `ctx.waitUntil()` to settle before running test assertions
 		await waitOnExecutionContext(ctx);
-		expect(await response.text()).toMatchInlineSnapshot(`"Hello World!"`);
+		expect(await response.text()).toBe("Fortagram is running");
 	});
 
-	it("responds with Hello World! (integration style)", async () => {
+	it("responds with a health check (integration style)", async () => {
 		const response = await SELF.fetch("https://example.com");
-		expect(await response.text()).toMatchInlineSnapshot(`"Hello World!"`);
+		expect(await response.text()).toBe("Fortagram is running");
 	});
 });

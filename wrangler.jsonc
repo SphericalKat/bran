@@ -23,12 +23,12 @@
 			}
 		]
 	},
-	"exports": {
-		"ReviewerAgent": {
-			"type": "durable-object",
-			"storage": "sqlite"
+	"migrations": [
+		{
+			"tag": "v1",
+			"new_sqlite_classes": ["ReviewerAgent"]
 		}
-	}
+	]
 	/**
 	 * Smart Placement
 	 * https://developers.cloudflare.com/workers/configuration/smart-placement/#smart-placement

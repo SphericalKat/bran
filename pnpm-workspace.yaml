@@ -3,4 +3,6 @@ allowBuilds:
   workerd: true
 
 onlyBuiltDependencies:
+  - '@google/genai'
   - core-js-pure
+  - protobufjs
