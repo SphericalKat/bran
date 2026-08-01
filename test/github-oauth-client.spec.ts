@@ -6,7 +6,7 @@ import {
   refreshGitHubUserAccessToken,
   signOAuthState,
   verifyOAuthState,
-} from "../src/auth/github";
+} from "../src/auth/github-oauth-client";
 
 function response(body: unknown, init: ResponseInit = {}): Response {
   return new Response(JSON.stringify(body), { status: 200, ...init });

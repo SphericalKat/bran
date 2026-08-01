@@ -18,17 +18,21 @@
 	"durable_objects": {
 		"bindings": [
 			{
-				"name": "ReviewerAgent",
-				"class_name": "ReviewerAgent"
+				"name": "GITHUB_AUTH_STORE",
+				"class_name": "GitHubAuthStore"
 			}
 		]
 	},
-	"migrations": [
-		{
-			"tag": "v1",
-			"new_sqlite_classes": ["ReviewerAgent"]
+	"exports": {
+		"ReviewerAgent": {
+			"type": "durable-object",
+			"storage": "sqlite"
+		},
+		"GitHubAuthStore": {
+			"type": "durable-object",
+			"storage": "sqlite"
 		}
-	]
+	}
 	/**
 	 * Smart Placement
 	 * https://developers.cloudflare.com/workers/configuration/smart-placement/#smart-placement
