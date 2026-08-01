@@ -19,10 +19,8 @@ import {
   validateReviewInstructions,
 } from "./review-instructions";
 import {
-  buildSubmitReviewRecoveryPrompt,
   lastAssistantText,
   parseReviewFromAssistantText,
-  SUBMIT_REVIEW_RECOVERY_ATTEMPTS,
 } from "./review-recovery";
 import { SUBMIT_REVIEW_SCHEMA, validateReviewOutput } from "./review";
 import { buildReviewSystemPrompt } from "./system-prompt";
@@ -218,11 +216,6 @@ export async function reviewPr(options: {
   await agent.prompt(prompt);
   throwAgentError(agent);
   submittedReview ??= parseReviewFromAssistantText(lastAssistantText(agent));
-  for (let attempt = 1; !submittedReview && attempt <= SUBMIT_REVIEW_RECOVERY_ATTEMPTS; attempt++) {
-    await agent.prompt(buildSubmitReviewRecoveryPrompt(attempt));
-    throwAgentError(agent);
-    submittedReview ??= parseReviewFromAssistantText(lastAssistantText(agent));
-  }
   if (!submittedReview) throw new Error("The reviewer did not submit a valid structured review");
 
   const metrics = collectMetrics(agent.state.messages, {

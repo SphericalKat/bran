@@ -143,7 +143,7 @@ describe("GitHub API", () => {
     const api = createGitHubApi({ token: "secret", fetch });
 
     await expect(api.getPullRequest("octo", "repo", 42)).rejects.toThrow(
-      "GitHub API request failed (403 Forbidden) [request request-123]",
+      "GitHub API request failed for GET /repos/octo/repo/pulls/42 (403 Forbidden) [request request-123]",
     );
   });
 

@@ -2,12 +2,6 @@ import type { Agent } from "@earendil-works/pi-agent-core";
 import { validateReviewOutput } from "./review";
 import type { ReviewOutput } from "./types";
 
-export const SUBMIT_REVIEW_RECOVERY_ATTEMPTS = 2;
-
-export function buildSubmitReviewRecoveryPrompt(attempt: number): string {
-  return `Your previous turn did not call submit_review with a valid payload. Continue from the existing context and call submit_review exactly once.${attempt === SUBMIT_REVIEW_RECOVERY_ATTEMPTS ? " This is the final attempt." : ""}`;
-}
-
 export function parseReviewFromAssistantText(text: string): ReviewOutput | null {
   const candidates = [text, ...[...text.matchAll(/```(?:json)?\s*([\s\S]*?)```/gi)].map((match) => match[1])];
   const firstBrace = text.indexOf("{");

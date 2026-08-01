@@ -2,6 +2,7 @@ import { getBuiltinModel, getBuiltinProviders } from "@earendil-works/pi-ai/prov
 import type { Api, Model } from "@earendil-works/pi-ai";
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import type { DiffStats, ReviewDiffMode } from "./review-diff";
+import { resolvePurroxyModel } from "./purroxy";
 
 export function parseModelString(value: string): { provider: string; modelId: string } {
   const model = value.trim();
@@ -20,6 +21,13 @@ export function parseModelString(value: string): { provider: string; modelId: st
 
 export function resolveModel(value: string): Model<Api> {
   const { provider, modelId } = parseModelString(value);
+  if (provider === "purroxy") {
+    return resolvePurroxyModel(
+      modelId,
+      (upstreamProvider, upstreamModelId) =>
+        getBuiltinModel(upstreamProvider as never, upstreamModelId as never) as Model<Api> | undefined,
+    );
+  }
   if (!getBuiltinProviders().includes(provider as never)) {
     throw new Error(`Unsupported model provider: ${provider}`);
   }

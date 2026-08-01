@@ -95,7 +95,7 @@ export function createGitHubApi(options: {
     if (!response.ok) {
       const requestId = response.headers.get("x-github-request-id");
       throw new Error(
-        `GitHub API request failed (${response.status} ${response.statusText})${
+        `GitHub API request failed for ${init.method ?? "GET"} ${path} (${response.status} ${response.statusText})${
           requestId ? ` [request ${requestId}]` : ""
         }`,
       );

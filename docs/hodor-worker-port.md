@@ -68,7 +68,7 @@ Important details:
 - For fork PRs, use `head.repo.full_name` from the PR response when reading head files. Reading every path from the base repository fails for fork-only commits.
 - GitHub compare uses merge-base semantics. It is suitable when the prior reviewed SHA is an ancestor. It cannot reproduce upstream's direct `git diff <old> HEAD` snapshot after a force-push. Falling back to the full current PR diff is correct and explicit; pretending compare is a snapshot is not.
 - Diff and contents responses have size/truncation limits. Large-review behavior must be explicit: paginate file metadata, cap tool output, fetch files lazily, and fail with a useful limit error rather than sending an unbounded prompt.
-- The OAuth grant must cover private-repository contents and pull requests. For classic OAuth apps that normally means the `repo` scope; GitHub App user tokens need repository `Contents: read`, `Pull requests: read`, and `Pull requests: write` to publish. See GitHub's [OAuth scopes](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/scopes-for-oauth-apps) and the permission section on each REST endpoint.
+- The OAuth grant must use the `repo` scope to read private-repository contents and pull requests and publish reviews as the connected user. See GitHub's [OAuth scopes](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/scopes-for-oauth-apps).
 
 ## Model tools in a Worker
 

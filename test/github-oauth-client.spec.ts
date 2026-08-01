@@ -3,7 +3,6 @@ import {
   buildAuthorizationUrl,
   exchangeAuthorizationCode,
   fetchCurrentUser,
-  refreshAccessToken,
   signOAuthState,
   verifyOAuthState,
 } from "../src/auth/github-oauth-client";
@@ -12,12 +11,13 @@ function response(body: unknown, init: ResponseInit = {}): Response {
   return new Response(JSON.stringify(body), { status: 200, ...init });
 }
 
-describe("GitHub App OAuth helpers", () => {
+describe("GitHub OAuth helpers", () => {
   it("builds a GitHub authorization URL with a signed state", () => {
     const url = new URL(buildAuthorizationUrl({
       clientId: "client-id",
       redirectUri: "https://bot.example/auth/github/callback",
       state: "signed-state",
+      scopes: ["repo"],
       login: "octocat",
       allowSignup: false,
     }));
@@ -27,6 +27,7 @@ describe("GitHub App OAuth helpers", () => {
       client_id: "client-id",
       redirect_uri: "https://bot.example/auth/github/callback",
       state: "signed-state",
+      scope: "repo",
       login: "octocat",
       allow_signup: "false",
     });
@@ -48,39 +49,28 @@ describe("GitHub App OAuth helpers", () => {
     await expect(verifyOAuthState(state, "state-secret", 2_001)).resolves.toBeNull();
   });
 
-  it("exchanges and refreshes expiring GitHub App user tokens", async () => {
-    const fetch = vi.fn<typeof globalThis.fetch>()
-      .mockResolvedValueOnce(response({
-        access_token: "access-token",
-        token_type: "bearer",
-        scope: "",
-        expires_in: 28_800,
-        refresh_token: "refresh-token",
-        refresh_token_expires_in: 15_552_000,
-      }))
-      .mockResolvedValueOnce(response({ access_token: "new-access", expires_in: 28_800 }));
+  it("exchanges an OAuth callback code for a repository-scoped token", async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(response({
+      access_token: "access-token",
+      token_type: "bearer",
+      scope: "repo",
+    }));
     const config = {
       clientId: "client-id",
       clientSecret: "client-secret",
       redirectUri: "https://bot.example/auth/github/callback",
     };
 
-    await expect(exchangeAuthorizationCode(config, "code", fetch)).resolves.toMatchObject({
+    await expect(exchangeAuthorizationCode(config, "code", fetch)).resolves.toEqual({
       accessToken: "access-token",
-      refreshToken: "refresh-token",
-    });
-    await expect(refreshAccessToken(config, "refresh-token", fetch)).resolves.toMatchObject({
-      accessToken: "new-access",
-      refreshToken: null,
+      tokenType: "bearer",
+      scope: "repo",
     });
 
     expect(fetch.mock.calls[0]?.[0]).toBe("https://github.com/login/oauth/access_token");
     expect(fetch.mock.calls[0]?.[1]).toMatchObject({
       method: "POST",
       body: expect.stringContaining("code=code"),
-    });
-    expect(fetch.mock.calls[1]?.[1]).toMatchObject({
-      body: expect.stringContaining("grant_type=refresh_token"),
     });
   });
 

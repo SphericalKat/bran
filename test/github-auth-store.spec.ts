@@ -17,10 +17,7 @@ describe("GitHubAuthStore", () => {
       {
         accessToken: "user-access-token",
         tokenType: "bearer",
-        scope: "",
-        expiresIn: 28_800,
-        refreshToken: "refresh-token",
-        refreshTokenExpiresIn: 15_552_000,
+        scope: "repo",
       },
     );
 
@@ -30,7 +27,7 @@ describe("GitHubAuthStore", () => {
       githubUserId: 123,
       githubLogin: "octocat",
       accessToken: "user-access-token",
-      refreshToken: "refresh-token",
+      scope: "repo",
     });
 
     await store.deleteAuthorization(telegramUserId);

@@ -14,6 +14,7 @@ interface AuthorizationUrlOptions {
   clientId: string;
   redirectUri: string;
   state: string;
+  scopes?: string[];
   login?: string;
   allowSignup?: boolean;
 }
@@ -22,9 +23,6 @@ export interface AccessToken {
   accessToken: string;
   tokenType: string;
   scope: string | null;
-  expiresIn: number | null;
-  refreshToken: string | null;
-  refreshTokenExpiresIn: number | null;
 }
 
 export interface GitHubUser {
@@ -47,7 +45,7 @@ export class GitHubOAuthError extends Error {
   }
 }
 
-/** Creates the GitHub App user-to-server authorization URL. */
+/** Creates the GitHub OAuth authorization URL. */
 export function buildAuthorizationUrl(options: AuthorizationUrlOptions): string {
   requireNonEmpty(options.clientId, "GitHub client ID");
   requireNonEmpty(options.redirectUri, "GitHub redirect URI");
@@ -57,6 +55,7 @@ export function buildAuthorizationUrl(options: AuthorizationUrlOptions): string 
   url.searchParams.set("client_id", options.clientId);
   url.searchParams.set("redirect_uri", options.redirectUri);
   url.searchParams.set("state", options.state);
+  if (options.scopes?.length) url.searchParams.set("scope", options.scopes.join(" "));
   if (options.login) url.searchParams.set("login", options.login);
   if (options.allowSignup !== undefined) {
     url.searchParams.set("allow_signup", String(options.allowSignup));
@@ -138,7 +137,7 @@ export async function verifyOAuthState(
   };
 }
 
-/** Exchanges a GitHub App callback code for an expiring user access token. */
+/** Exchanges a GitHub OAuth callback code for an access token. */
 export async function exchangeAuthorizationCode(
   config: OAuthConfig,
   code: string,
@@ -150,21 +149,6 @@ export async function exchangeAuthorizationCode(
     client_secret: config.clientSecret,
     code,
     redirect_uri: config.redirectUri,
-  }, fetchImpl);
-}
-
-/** Refreshes an expiring GitHub App user access token. */
-export async function refreshAccessToken(
-  config: OAuthConfig,
-  refreshToken: string,
-  fetchImpl: typeof fetch = globalThis.fetch,
-): Promise<AccessToken> {
-  requireNonEmpty(refreshToken, "GitHub refresh token");
-  return requestToken(config, {
-    client_id: config.clientId,
-    client_secret: config.clientSecret,
-    grant_type: "refresh_token",
-    refresh_token: refreshToken,
   }, fetchImpl);
 }
 
@@ -222,9 +206,6 @@ async function requestToken(
     accessToken: body.access_token,
     tokenType: body.token_type ?? "bearer",
     scope: body.scope ?? null,
-    expiresIn: body.expires_in ?? null,
-    refreshToken: body.refresh_token ?? null,
-    refreshTokenExpiresIn: body.refresh_token_expires_in ?? null,
   };
 }
 
@@ -284,18 +265,12 @@ function isTokenResponse(value: unknown): value is {
   access_token: string;
   token_type?: string;
   scope?: string;
-  expires_in?: number;
-  refresh_token?: string;
-  refresh_token_expires_in?: number;
 } {
   if (!value || typeof value !== "object") return false;
   const body = value as Record<string, unknown>;
   return typeof body.access_token === "string" && body.access_token.length > 0 &&
     (body.token_type === undefined || typeof body.token_type === "string") &&
-    (body.scope === undefined || typeof body.scope === "string") &&
-    (body.expires_in === undefined || typeof body.expires_in === "number") &&
-    (body.refresh_token === undefined || typeof body.refresh_token === "string") &&
-    (body.refresh_token_expires_in === undefined || typeof body.refresh_token_expires_in === "number");
+    (body.scope === undefined || typeof body.scope === "string");
 }
 
 function isGitHubUser(value: unknown): value is GitHubUser {

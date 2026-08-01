@@ -9,8 +9,8 @@ import type { TelegramReviewProgressTarget } from "../src/telegram/review-progre
 
 const now = 1_000_000;
 const env = {
-  GITHUB_APP_CLIENT_ID: "client-id",
-  GITHUB_APP_CLIENT_SECRET: "client-secret",
+  GITHUB_OAUTH_CLIENT_ID: "client-id",
+  GITHUB_OAUTH_CLIENT_SECRET: "client-secret",
   GITHUB_CALLBACK_URL: "https://bot.example/auth/github/callback",
   GITHUB_OAUTH_STATE_SECRET: "state-secret",
   TELEGRAM_BOT_TOKEN: "telegram-token",
@@ -21,9 +21,6 @@ function token(overrides = {}) {
     access_token: "access-token",
     token_type: "bearer",
     scope: "repo",
-    expires_in: 28_800,
-    refresh_token: "refresh-token",
-    refresh_token_expires_in: 15_552_000,
     ...overrides,
   };
 }
@@ -34,9 +31,6 @@ function authorization(overrides: Partial<GitHubAuthorization> = {}): GitHubAuth
     githubUserId: 1,
     githubLogin: "octocat",
     accessToken: "access-token",
-    refreshToken: "refresh-token",
-    accessTokenExpiresAt: now + 600_001,
-    refreshTokenExpiresAt: now + 1_000_000,
     scope: "repo",
     updatedAt: now - 1,
     ...overrides,
@@ -53,18 +47,11 @@ function createStore(current: GitHubAuthorization | null = null) {
         githubUserId: user.id,
         githubLogin: user.login,
         accessToken: accessToken.accessToken,
-        refreshToken: accessToken.refreshToken,
-        accessTokenExpiresAt: accessToken.expiresIn === null
-          ? null
-          : storedAt + accessToken.expiresIn * 1_000,
-        refreshTokenExpiresAt: accessToken.refreshTokenExpiresIn === null
-          ? null
-          : storedAt + accessToken.refreshTokenExpiresIn * 1_000,
         scope: accessToken.scope,
         updatedAt: storedAt,
       });
     }),
-    getValidAuthorization: vi.fn().mockImplementation(async () => current),
+    getAuthorization: vi.fn().mockImplementation(async () => current),
     deleteAuthorization: vi.fn().mockImplementation(async () => { current = null; }),
   };
 }
@@ -105,6 +92,7 @@ describe("GitHub", () => {
     const state = await verifyOAuthState(url.searchParams.get("state")!, "state-secret", now);
 
     expect(url.origin + url.pathname).toBe("https://github.com/login/oauth/authorize");
+    expect(url.searchParams.get("scope")).toBe("repo");
     expect(state).toEqual({ telegramUserId: "123", nonce: "nonce", expiresAt: now + 600_000 });
     expect(store.createAuthorizationNonce).toHaveBeenCalledWith("123", now + 600_000);
   });
@@ -133,12 +121,34 @@ describe("GitHub", () => {
     );
   });
 
+  it("validates and stores a personal access token for one Telegram user", async () => {
+    const store = createStore();
+    const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValueOnce(
+      json({ id: 42, login: "octocat" }),
+    );
+    const github = createGitHub(store, { fetch });
+
+    await expect(github.connectToken("123", "  github-token  ")).resolves.toBe("octocat");
+    expect(fetch).toHaveBeenCalledWith(
+      "https://api.github.com/user",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Authorization: "Bearer github-token" }),
+      }),
+    );
+    expect(store.storeAuthorization).toHaveBeenCalledWith(
+      "123",
+      { id: 42, login: "octocat" },
+      { accessToken: "github-token", tokenType: "bearer", scope: null },
+      now,
+    );
+  });
+
   it("reports connection status without exposing credentials", async () => {
     const store = createStore(authorization());
     const github = createGitHub(store);
 
     await expect(github.connectedLogin("123")).resolves.toBe("octocat");
-    expect(store.getValidAuthorization).toHaveBeenCalledWith("123", 300_000, now);
+    expect(store.getAuthorization).toHaveBeenCalledWith("123");
   });
 
   it("does not publish a review without a connection", async () => {

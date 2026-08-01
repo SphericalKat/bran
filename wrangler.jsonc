@@ -38,7 +38,9 @@
 		}
 	},
 	"vars": {
-		"GITHUB_CALLBACK_URL": "https://fortagram.amolele.workers.dev/auth/github/callback"
+		"GITHUB_OAUTH_CLIENT_ID": "Ov23liSXE1OC5z0pfJ4S",
+		"GITHUB_CALLBACK_URL": "https://fortagram.amolele.workers.dev/auth/github/callback",
+		"REVIEW_MODEL": "purroxy/openai/gpt-5.6-sol"
 	}
 	/**
 	 * Smart Placement

@@ -1,4 +1,4 @@
-import { Bot, webhookCallback, type Context } from "grammy";
+import { Bot, webhookCallback, type BotConfig, type Context } from "grammy";
 import type { GitHub } from "../github";
 import type { GitHubReviewEvent } from "../reviewer/github-api";
 import { parsePullRequestUrl, parseReviewAction, privateTelegramUserId } from "./command-utils";
@@ -11,6 +11,8 @@ import {
 export interface TelegramBotDependencies {
   token: string;
   github: GitHub;
+  fetch?: typeof globalThis.fetch;
+  botInfo?: NonNullable<BotConfig<Context>["botInfo"]>;
 }
 
 export function handleTelegramWebhook(
@@ -36,12 +38,16 @@ export async function notifyGitHubConnected(
 
 function createTelegramBot(dependencies: TelegramBotDependencies): Bot {
   const bot = new Bot(dependencies.token, {
-    client: { canUseWebhookReply: () => false },
+    client: {
+      canUseWebhookReply: () => false,
+      fetch: dependencies.fetch,
+    },
+    botInfo: dependencies.botInfo,
   });
 
   bot.command("start", async (ctx) => {
     await ctx.reply(
-      "Use /connect to authorize GitHub. Then use /review with a pull-request URL. You can also use /comment, /approve, or /requestchanges with a URL and message.",
+      "Connect GitHub with /connect, or send /token followed by a personal access token in this private chat. Then use /review with a pull-request URL.",
     );
   });
 
@@ -50,6 +56,27 @@ function createTelegramBot(dependencies: TelegramBotDependencies): Bot {
     if (!userId) return;
     const authorizationUrl = await dependencies.github.connectionUrl(userId);
     await ctx.reply(`Authorize Fortagram to act as your GitHub user:\n${authorizationUrl}`);
+  });
+
+  bot.command("token", async (ctx) => {
+    const token = String(ctx.match ?? "").trim();
+    const tokenMessageDeleted = await ctx.deleteMessage().then(() => true).catch(() => false);
+    if (!tokenMessageDeleted) {
+      await ctx.reply("I could not delete the message containing that token. Delete it and try again.");
+      return;
+    }
+    const userId = await requirePrivateUser(ctx);
+    if (!userId) return;
+    if (!token) {
+      await ctx.reply("Usage: /token github_personal_access_token");
+      return;
+    }
+    try {
+      const githubLogin = await dependencies.github.connectToken(userId, token);
+      await ctx.reply(`GitHub connected as @${githubLogin}.`);
+    } catch {
+      await ctx.reply("GitHub rejected that token. Check that it is valid and can access the repository.");
+    }
   });
 
   bot.command("status", async (ctx) => {
@@ -67,9 +94,7 @@ function createTelegramBot(dependencies: TelegramBotDependencies): Bot {
     const userId = await requirePrivateUser(ctx);
     if (!userId) return;
     await dependencies.github.disconnect(userId);
-    await ctx.reply(
-      "GitHub authorization removed from Fortagram. You can also revoke the app in GitHub settings.",
-    );
+    await ctx.reply("GitHub credentials removed from Fortagram.");
   });
 
   bot.command("review", async (ctx) => {
@@ -110,10 +135,8 @@ function createTelegramBot(dependencies: TelegramBotDependencies): Bot {
     });
     if (result.status === "not_connected") {
       await new TelegramReviewProgress(dependencies.token, progress).failed(
-        "Connect GitHub with /connect in a private chat before reviewing a pull request.",
+        "Connect GitHub with /connect or /token in a private chat before reviewing a pull request.",
       );
-    } else if (result.status === "rejected") {
-      await new TelegramReviewProgress(dependencies.token, progress).failed(result.message);
     }
   });
 
@@ -147,7 +170,7 @@ function registerReviewAction(
       event,
     });
     if (result.status === "not_connected") {
-      await ctx.reply("Connect GitHub with /connect before taking actions.");
+      await ctx.reply("Connect GitHub with /connect or /token before taking actions.");
     } else if (result.status === "posted") {
       await ctx.reply(`GitHub review posted as @${result.githubLogin}.`);
     } else {

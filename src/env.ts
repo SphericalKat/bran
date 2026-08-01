@@ -3,10 +3,10 @@ import type { ReviewerAgent } from "./agent/ReviewerAgent";
 
 export interface RuntimeSecrets {
   TELEGRAM_BOT_TOKEN: string;
-  GITHUB_APP_CLIENT_ID: string;
-  GITHUB_APP_CLIENT_SECRET: string;
-  GITHUB_OAUTH_STATE_SECRET: string;
-  GITHUB_CALLBACK_URL: string;
+  GITHUB_OAUTH_CLIENT_ID?: string;
+  GITHUB_OAUTH_CLIENT_SECRET?: string;
+  GITHUB_OAUTH_STATE_SECRET?: string;
+  GITHUB_CALLBACK_URL?: string;
   LLM_API_KEY: string;
   REVIEW_MODEL?: string;
 }

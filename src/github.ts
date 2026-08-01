@@ -15,17 +15,11 @@ import { postReviewComment } from "./reviewer/publisher";
 import type { TelegramReviewProgressTarget } from "./telegram/review-progress";
 
 const STATE_TTL_MS = 10 * 60 * 1_000;
-const REFRESH_WINDOW_MS = 5 * 60 * 1_000;
-
 interface AuthStore {
   createAuthorizationNonce(userId: string, expiresAt: number): Promise<string>;
   consumeAuthorizationNonce(userId: string, nonce: string, now?: number): Promise<boolean>;
   storeAuthorization(userId: string, user: GitHubUser, token: AccessToken, now?: number): Promise<void>;
-  getValidAuthorization(
-    userId: string,
-    refreshWindowMs: number,
-    now?: number,
-  ): Promise<GitHubAuthorization | null>;
+  getAuthorization(userId: string): Promise<GitHubAuthorization | null>;
   deleteAuthorization(userId: string): Promise<void>;
 }
 
@@ -82,6 +76,13 @@ export class GitHub {
   }
 
   async connectionUrl(telegramUserId: string): Promise<string> {
+    if (
+      !this.env.GITHUB_OAUTH_CLIENT_ID ||
+      !this.env.GITHUB_OAUTH_STATE_SECRET ||
+      !this.env.GITHUB_CALLBACK_URL
+    ) {
+      throw new Error("GitHub OAuth is not configured");
+    }
     const expiresAt = this.now() + STATE_TTL_MS;
     const nonce = await this.getStore(telegramUserId)
       .createAuthorizationNonce(telegramUserId, expiresAt);
@@ -90,13 +91,17 @@ export class GitHub {
       this.env.GITHUB_OAUTH_STATE_SECRET,
     );
     return buildAuthorizationUrl({
-      clientId: this.env.GITHUB_APP_CLIENT_ID,
+      clientId: this.env.GITHUB_OAUTH_CLIENT_ID,
       redirectUri: this.env.GITHUB_CALLBACK_URL,
       state,
+      scopes: ["repo"],
     });
   }
 
   async finishConnection(stateValue: string, code: string): Promise<ConnectionResult> {
+    if (!this.env.GITHUB_OAUTH_STATE_SECRET) {
+      return { status: "provider_error", error: new Error("GitHub OAuth is not configured") };
+    }
     const state = await verifyOAuthState(
       stateValue,
       this.env.GITHUB_OAUTH_STATE_SECRET,
@@ -125,6 +130,19 @@ export class GitHub {
 
   async connectedLogin(telegramUserId: string): Promise<string | null> {
     return (await this.connection(telegramUserId))?.githubLogin ?? null;
+  }
+
+  async connectToken(telegramUserId: string, accessToken: string): Promise<string> {
+    const token = accessToken.trim();
+    if (!token) throw new Error("A GitHub token is required");
+    const user = await fetchCurrentUser(token, this.fetch);
+    await this.getStore(telegramUserId).storeAuthorization(
+      telegramUserId,
+      user,
+      { accessToken: token, tokenType: "bearer", scope: null },
+      this.now(),
+    );
+    return user.login;
   }
 
   disconnect(telegramUserId: string): Promise<void> {
@@ -181,14 +199,20 @@ export class GitHub {
   }
 
   private connection(telegramUserId: string): Promise<GitHubAuthorization | null> {
-    return this.getStore(telegramUserId)
-      .getValidAuthorization(telegramUserId, REFRESH_WINDOW_MS, this.now());
+    return this.getStore(telegramUserId).getAuthorization(telegramUserId);
   }
 
   private oauthConfig() {
+    if (
+      !this.env.GITHUB_OAUTH_CLIENT_ID ||
+      !this.env.GITHUB_OAUTH_CLIENT_SECRET ||
+      !this.env.GITHUB_CALLBACK_URL
+    ) {
+      throw new Error("GitHub OAuth is not configured");
+    }
     return {
-      clientId: this.env.GITHUB_APP_CLIENT_ID,
-      clientSecret: this.env.GITHUB_APP_CLIENT_SECRET,
+      clientId: this.env.GITHUB_OAUTH_CLIENT_ID,
+      clientSecret: this.env.GITHUB_OAUTH_CLIENT_SECRET,
       redirectUri: this.env.GITHUB_CALLBACK_URL,
     };
   }
