@@ -10,6 +10,7 @@
 	"observability": {
 		"enabled": true
 	},
+	"preview_urls": false,
 	"upload_source_maps": true,
 	"compatibility_flags": [
 		"nodejs_compat"
@@ -21,6 +22,12 @@
 				"class_name": "ReviewerAgent"
 			}
 		]
+	},
+	"exports": {
+		"ReviewerAgent": {
+			"type": "durable-object",
+			"storage": "sqlite"
+		}
 	}
 	/**
 	 * Smart Placement
