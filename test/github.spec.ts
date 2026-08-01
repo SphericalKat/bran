@@ -5,6 +5,7 @@ import type { AppEnv } from "../src/env";
 import { GitHub } from "../src/github";
 import type { ReviewResult as GeneratedReview } from "../src/reviewer/agent";
 import type { postReviewComment } from "../src/reviewer/publisher";
+import type { TelegramReviewProgressTarget } from "../src/telegram/review-progress";
 
 const now = 1_000_000;
 const env = {
@@ -77,6 +78,8 @@ function createGitHub(
       telegramUserId: string;
       prUrl: string;
       githubToken: string;
+      githubLogin: string;
+      progress?: TelegramReviewProgressTarget;
     }) => Promise<GeneratedReview>;
   } = {},
 ) {
@@ -208,6 +211,8 @@ describe("GitHub", () => {
       telegramUserId: "123",
       prUrl: "https://github.com/octo/repo/pull/42",
       githubToken: "access-token",
+      githubLogin: "octocat",
+      progress: undefined,
     });
   });
 

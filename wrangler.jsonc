@@ -36,6 +36,9 @@
 			"type": "durable-object",
 			"storage": "sqlite"
 		}
+	},
+	"vars": {
+		"GITHUB_CALLBACK_URL": "https://fortagram.amolele.workers.dev/auth/github/callback"
 	}
 	/**
 	 * Smart Placement

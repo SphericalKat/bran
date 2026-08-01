@@ -41,7 +41,8 @@ const SEARCH_CODE_SCHEMA = Type.Object({ query: Type.String({ minLength: 2, maxL
 const FILE_DIFF_SCHEMA = Type.Object({ path: Type.String({ minLength: 1 }) });
 
 export interface AgentProgressEvent {
-  type: "tool_start" | "tool_end" | "thinking" | "turn_start" | "turn_end" | "agent_start" | "agent_end" | "text_delta" | "thinking_delta";
+  type: "phase" | "tool_start" | "tool_end" | "thinking" | "turn_start" | "turn_end" | "agent_start" | "agent_end" | "text_delta" | "thinking_delta";
+  phase?: string;
   toolName?: string;
   isError?: boolean;
   turnIndex?: number;
@@ -86,9 +87,11 @@ export async function reviewPr(options: {
   } = options;
   if (!llmApiKey) throw new Error("An LLM API key is required");
 
+  onEvent?.({ type: "phase", phase: "Loading pull request" });
   const { owner, repo, prNumber } = parsePrUrl(prUrl);
   const github = options.githubApi ?? createGitHubApi({ token: options.githubToken ?? "" });
   const pullRequest = await github.getPullRequest(owner, repo, prNumber);
+  onEvent?.({ type: "phase", phase: "Loading discussion and changed files" });
   const commentsAndReviews = await Promise.all([
     github.getIssueComments(owner, repo, prNumber),
     github.getPullRequestReviews(owner, repo, prNumber),
@@ -189,6 +192,7 @@ export async function reviewPr(options: {
     toolExecution: "sequential",
   });
 
+  onEvent?.({ type: "phase", phase: "Analyzing changes" });
   agent.subscribe((event) => {
     switch (event.type) {
       case "agent_start": onEvent?.({ type: "agent_start" }); break;

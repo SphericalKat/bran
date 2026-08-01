@@ -2,6 +2,10 @@ import { Agent } from "agents";
 import type { AppEnv } from "../env";
 import type { AgentProgressEvent, ReviewResult } from "../reviewer/agent";
 import { postReviewStructured } from "../reviewer/publisher";
+import {
+  TelegramReviewProgress,
+  type TelegramReviewProgressTarget,
+} from "../telegram/review-progress";
 
 export interface ReviewerAgentState {
   status: "idle" | "reviewing" | "complete" | "failed";
@@ -18,6 +22,8 @@ export interface RunCodeReviewInput {
   model?: string;
   reasoningEffort?: string;
   full?: boolean;
+  githubLogin: string;
+  progress?: TelegramReviewProgressTarget;
 }
 
 export class ReviewerAgent extends Agent<AppEnv, ReviewerAgentState> {
@@ -45,6 +51,16 @@ export class ReviewerAgent extends Agent<AppEnv, ReviewerAgentState> {
 
   private async performReview(input: RunCodeReviewInput): Promise<ReviewResult> {
     const startedAt = Date.now();
+    const progress = input.progress
+      ? new TelegramReviewProgress(this.env.TELEGRAM_BOT_TOKEN, input.progress)
+      : null;
+    let progressUpdates = Promise.resolve();
+    const reportProgress = (phase: string, force = false) => {
+      progressUpdates = progressUpdates
+        .then(() => progress?.update(phase, force))
+        .then(() => undefined)
+        .catch((error) => console.warn("Failed to update Telegram review progress", error));
+    };
     this.setState({
       status: "reviewing",
       prUrl: input.prUrl,
@@ -53,6 +69,7 @@ export class ReviewerAgent extends Agent<AppEnv, ReviewerAgentState> {
       startedAt,
       finishedAt: null,
     });
+    reportProgress("Loading pull request", true);
 
     try {
       const { reviewPr } = await import("../reviewer/agent");
@@ -65,9 +82,11 @@ export class ReviewerAgent extends Agent<AppEnv, ReviewerAgentState> {
           reasoningEffort: input.reasoningEffort,
           full: input.full,
           includeMetricsFooter: true,
-          onEvent: (event) => this.recordProgress(event),
+          onEvent: (event) => this.recordProgress(event, reportProgress),
         });
         this.setState({ ...this.state, phase: "Posting review to GitHub" });
+        reportProgress("Posting review to GitHub", true);
+        await progressUpdates;
         const published = await postReviewStructured({
           prUrl: input.prUrl,
           review: generated.review,
@@ -80,6 +99,10 @@ export class ReviewerAgent extends Agent<AppEnv, ReviewerAgentState> {
         if (!published.success) {
           throw new Error(published.error ?? "GitHub rejected the generated review");
         }
+        await this.notifyProgress(() => progress?.complete(
+          input.githubLogin,
+          generated.review.findings.length,
+        ));
         return generated;
       });
       this.setState({
@@ -98,15 +121,40 @@ export class ReviewerAgent extends Agent<AppEnv, ReviewerAgentState> {
         error: message,
         finishedAt: Date.now(),
       });
+      await progressUpdates;
+      await this.notifyProgress(() => progress?.failed(message));
       throw error;
     }
   }
 
-  private recordProgress(event: AgentProgressEvent): void {
+  private recordProgress(
+    event: AgentProgressEvent,
+    report: (phase: string, force?: boolean) => void,
+  ): void {
     let phase: string | null = null;
+    if (event.type === "phase") phase = event.phase ?? null;
     if (event.type === "turn_start") phase = `Reviewing code (pass ${event.turnIndex ?? 1})`;
-    if (event.type === "tool_start") phase = `Inspecting code with ${event.toolName ?? "a repository tool"}`;
+    if (event.type === "tool_start") phase = toolPhase(event.toolName);
     if (!phase) return;
     this.setState({ ...this.state, phase });
+    report(phase);
+  }
+
+  private async notifyProgress(action: () => Promise<void> | undefined): Promise<void> {
+    try {
+      await action();
+    } catch (error) {
+      console.warn("Failed to update Telegram review progress", error);
+    }
+  }
+}
+
+function toolPhase(toolName: string | undefined): string {
+  switch (toolName) {
+    case "read_file": return "Reading surrounding source";
+    case "search_code": return "Searching related code";
+    case "get_file_diff": return "Inspecting a changed file";
+    case "submit_review": return "Finalizing findings";
+    default: return "Inspecting repository context";
   }
 }

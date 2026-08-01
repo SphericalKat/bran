@@ -21,6 +21,9 @@ The GitHub App must be able to read repository contents and pull requests and wr
 
 1. Send `/connect` to the Telegram bot and complete GitHub authorization.
 2. Send `/review https://github.com/owner/repository/pull/123`.
-3. Fortagram reviews the immutable pull-request head and posts the result as the connected GitHub user.
+3. Fortagram edits one Telegram status message as the review moves through loading, analysis, repository inspection, and publishing.
+4. Fortagram posts the result as the connected GitHub user and tags the requester in the completed status message.
+
+`/review` can be sent from a group. GitHub authorization still happens privately with `/connect`, and the review always uses the requester's own connection.
 
 Manual `/comment`, `/approve`, and `/requestchanges` actions continue to use the same OAuth connection.

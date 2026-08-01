@@ -12,6 +12,7 @@ import {
 import type { GitHubReviewEvent } from "./reviewer/github-api";
 import type { ReviewResult as GeneratedReview } from "./reviewer/agent";
 import { postReviewComment } from "./reviewer/publisher";
+import type { TelegramReviewProgressTarget } from "./telegram/review-progress";
 
 const STATE_TTL_MS = 10 * 60 * 1_000;
 const REFRESH_WINDOW_MS = 5 * 60 * 1_000;
@@ -47,6 +48,8 @@ type ReviewRunner = (input: {
   telegramUserId: string;
   prUrl: string;
   githubToken: string;
+  githubLogin: string;
+  progress?: TelegramReviewProgressTarget;
 }) => Promise<GeneratedReview>;
 
 interface Dependencies {
@@ -72,6 +75,8 @@ export class GitHub {
       env.REVIEWER_AGENT.getByName(input.telegramUserId).runCodeReview({
         prUrl: input.prUrl,
         githubToken: input.githubToken,
+        githubLogin: input.githubLogin,
+        progress: input.progress,
       }));
     this.getStore = dependencies.getStore ?? ((userId) => env.GITHUB_AUTH_STORE.getByName(userId));
   }
@@ -149,6 +154,7 @@ export class GitHub {
   async reviewPullRequest(input: {
     telegramUserId: string;
     prUrl: string;
+    progress?: TelegramReviewProgressTarget;
   }): Promise<AutomatedReviewResult> {
     const connection = await this.connection(input.telegramUserId);
     if (!connection) return { status: "not_connected" };
@@ -158,6 +164,8 @@ export class GitHub {
         telegramUserId: input.telegramUserId,
         prUrl: input.prUrl,
         githubToken: connection.accessToken,
+        githubLogin: connection.githubLogin,
+        progress: input.progress,
       });
       return {
         status: "posted",

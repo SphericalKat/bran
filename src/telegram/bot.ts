@@ -2,6 +2,11 @@ import { Bot, webhookCallback, type Context } from "grammy";
 import type { GitHub } from "../github";
 import type { GitHubReviewEvent } from "../reviewer/github-api";
 import { parsePullRequestUrl, parseReviewAction, privateTelegramUserId } from "./command-utils";
+import {
+  initialReviewProgressText,
+  TelegramReviewProgress,
+  type TelegramReviewProgressTarget,
+} from "./review-progress";
 
 export interface TelegramBotDependencies {
   token: string;
@@ -30,7 +35,9 @@ export async function notifyGitHubConnected(
 }
 
 function createTelegramBot(dependencies: TelegramBotDependencies): Bot {
-  const bot = new Bot(dependencies.token);
+  const bot = new Bot(dependencies.token, {
+    client: { canUseWebhookReply: () => false },
+  });
 
   bot.command("start", async (ctx) => {
     await ctx.reply(
@@ -66,28 +73,47 @@ function createTelegramBot(dependencies: TelegramBotDependencies): Bot {
   });
 
   bot.command("review", async (ctx) => {
-    const userId = await requirePrivateUser(ctx);
-    if (!userId) return;
+    const requester = ctx.from;
+    const chatId = ctx.chat?.id;
+    if (!requester || chatId === undefined) return;
     const prUrl = parsePullRequestUrl(String(ctx.match ?? ""));
     if (!prUrl) {
       await ctx.reply("Usage: /review https://github.com/owner/repository/pull/123");
       return;
     }
 
-    await ctx.reply("Review started. I’ll post the result to GitHub when it is ready.");
-    const result = await dependencies.github.reviewPullRequest({
-      telegramUserId: userId,
+    const requesterName = [requester.first_name, requester.last_name].filter(Boolean).join(" ")
+      || requester.username
+      || String(requester.id);
+    const progressMessage = await ctx.reply(
+      initialReviewProgressText({
+        prUrl,
+        requesterId: requester.id,
+        requesterName,
+      }),
+      {
+        parse_mode: "HTML",
+        link_preview_options: { is_disabled: true },
+      },
+    );
+    const progress: TelegramReviewProgressTarget = {
+      chatId,
+      messageId: progressMessage.message_id,
+      requesterId: requester.id,
+      requesterName,
       prUrl,
+    };
+    const result = await dependencies.github.reviewPullRequest({
+      telegramUserId: String(requester.id),
+      prUrl,
+      progress,
     });
     if (result.status === "not_connected") {
-      await ctx.reply("Connect GitHub with /connect before reviewing a pull request.");
-    } else if (result.status === "posted") {
-      const findingLabel = result.findings === 1 ? "finding" : "findings";
-      await ctx.reply(
-        `Review posted as @${result.githubLogin} with ${result.findings} ${findingLabel}.`,
+      await new TelegramReviewProgress(dependencies.token, progress).failed(
+        "Connect GitHub with /connect in a private chat before reviewing a pull request.",
       );
-    } else {
-      await ctx.reply(`Review failed: ${result.message}`);
+    } else if (result.status === "rejected") {
+      await new TelegramReviewProgress(dependencies.token, progress).failed(result.message);
     }
   });
 
