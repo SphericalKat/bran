@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import {
-  buildGitHubAuthorizationUrl,
-  exchangeGitHubAuthorizationCode,
-  fetchGitHubUser,
-  refreshGitHubUserAccessToken,
+  buildAuthorizationUrl,
+  exchangeAuthorizationCode,
+  fetchCurrentUser,
+  refreshAccessToken,
   signOAuthState,
   verifyOAuthState,
 } from "../src/auth/github-oauth-client";
@@ -14,7 +14,7 @@ function response(body: unknown, init: ResponseInit = {}): Response {
 
 describe("GitHub App OAuth helpers", () => {
   it("builds a GitHub authorization URL with a signed state", () => {
-    const url = new URL(buildGitHubAuthorizationUrl({
+    const url = new URL(buildAuthorizationUrl({
       clientId: "client-id",
       redirectUri: "https://bot.example/auth/github/callback",
       state: "signed-state",
@@ -65,11 +65,11 @@ describe("GitHub App OAuth helpers", () => {
       redirectUri: "https://bot.example/auth/github/callback",
     };
 
-    await expect(exchangeGitHubAuthorizationCode(config, "code", fetch)).resolves.toMatchObject({
+    await expect(exchangeAuthorizationCode(config, "code", fetch)).resolves.toMatchObject({
       accessToken: "access-token",
       refreshToken: "refresh-token",
     });
-    await expect(refreshGitHubUserAccessToken(config, "refresh-token", fetch)).resolves.toMatchObject({
+    await expect(refreshAccessToken(config, "refresh-token", fetch)).resolves.toMatchObject({
       accessToken: "new-access",
       refreshToken: null,
     });
@@ -86,7 +86,7 @@ describe("GitHub App OAuth helpers", () => {
 
   it("fetches the authenticated GitHub user without exposing token details in errors", async () => {
     const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(response({ id: 1, login: "octocat" }));
-    await expect(fetchGitHubUser("access-token", fetch)).resolves.toEqual({ id: 1, login: "octocat" });
+    await expect(fetchCurrentUser("access-token", fetch)).resolves.toEqual({ id: 1, login: "octocat" });
     expect(fetch).toHaveBeenCalledWith("https://api.github.com/user", expect.objectContaining({
       headers: expect.objectContaining({ Authorization: "Bearer access-token" }),
     }));

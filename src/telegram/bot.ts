@@ -1,13 +1,12 @@
 import { Bot, webhookCallback, type Context } from "grammy";
-import type { GitHubOAuthService } from "../auth/github-oauth-service";
-import type { ReviewActionService } from "../actions/review-action-service";
+import { postReview } from "../actions/post-review";
+import type { GitHubAuth } from "../auth/github-auth";
 import type { GitHubReviewEvent } from "../reviewer/github-api";
 import { parseReviewAction, privateTelegramUserId } from "./command-utils";
 
 export interface TelegramBotDependencies {
   token: string;
-  oauth: GitHubOAuthService;
-  reviewActions: ReviewActionService;
+  github: GitHubAuth;
 }
 
 export function handleTelegramWebhook(
@@ -40,17 +39,17 @@ function createTelegramBot(dependencies: TelegramBotDependencies): Bot {
   bot.command(["connect", "login"], async (ctx) => {
     const userId = await requirePrivateUser(ctx);
     if (!userId) return;
-    const authorizationUrl = await dependencies.oauth.beginAuthorization(userId);
+    const authorizationUrl = await dependencies.github.getConnectionUrl(userId);
     await ctx.reply(`Authorize Fortagram to act as your GitHub user:\n${authorizationUrl}`);
   });
 
   bot.command("status", async (ctx) => {
     const userId = await requirePrivateUser(ctx);
     if (!userId) return;
-    const authorization = await dependencies.oauth.getAuthorization(userId);
+    const connection = await dependencies.github.getConnection(userId);
     await ctx.reply(
-      authorization
-        ? `Connected to GitHub as @${authorization.githubLogin}.`
+      connection
+        ? `Connected to GitHub as @${connection.githubLogin}.`
         : "GitHub is not connected. Use /connect first.",
     );
   });
@@ -58,21 +57,21 @@ function createTelegramBot(dependencies: TelegramBotDependencies): Bot {
   bot.command(["disconnect", "logout"], async (ctx) => {
     const userId = await requirePrivateUser(ctx);
     if (!userId) return;
-    await dependencies.oauth.disconnect(userId);
+    await dependencies.github.disconnect(userId);
     await ctx.reply(
       "GitHub authorization removed from Fortagram. You can also revoke the app in GitHub settings.",
     );
   });
 
-  registerReviewAction(bot, dependencies.reviewActions, "comment", "COMMENT");
-  registerReviewAction(bot, dependencies.reviewActions, "approve", "APPROVE");
-  registerReviewAction(bot, dependencies.reviewActions, "requestchanges", "REQUEST_CHANGES");
+  registerReviewAction(bot, dependencies.github, "comment", "COMMENT");
+  registerReviewAction(bot, dependencies.github, "approve", "APPROVE");
+  registerReviewAction(bot, dependencies.github, "requestchanges", "REQUEST_CHANGES");
   return bot;
 }
 
 function registerReviewAction(
   bot: Bot,
-  reviewActions: ReviewActionService,
+  github: GitHubAuth,
   command: string,
   event: GitHubReviewEvent,
 ): void {
@@ -87,7 +86,7 @@ function registerReviewAction(
       return;
     }
 
-    const result = await reviewActions.execute({
+    const result = await postReview(github, {
       telegramUserId: userId,
       prUrl: parsed.prUrl,
       message: parsed.message,

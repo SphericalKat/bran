@@ -1,12 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
-import { handleGitHubOAuthCallback } from "../src/auth/github-oauth-routes";
-import type { GitHubOAuthService } from "../src/auth/github-oauth-service";
+import { handleGitHubCallback } from "../src/auth/github-callback";
+import type { GitHubAuth } from "../src/auth/github-auth";
 
-function oauth(result: Awaited<ReturnType<GitHubOAuthService["completeAuthorization"]>>): GitHubOAuthService {
+function github(result: Awaited<ReturnType<GitHubAuth["connect"]>>): GitHubAuth {
   return {
-    beginAuthorization: vi.fn(),
-    completeAuthorization: vi.fn().mockResolvedValue(result),
-    getAuthorization: vi.fn(),
+    getConnectionUrl: vi.fn(),
+    connect: vi.fn().mockResolvedValue(result),
+    getConnection: vi.fn(),
     disconnect: vi.fn(),
   };
 }
@@ -17,39 +17,39 @@ function request(path = "/auth/github/callback?state=state&code=code", method = 
 
 describe("GitHub OAuth callback route", () => {
   it("rejects methods other than GET without completing authorization", async () => {
-    const service = oauth({ status: "invalid_state" });
+    const auth = github({ status: "invalid_state" });
 
-    const response = await handleGitHubOAuthCallback({
+    const response = await handleGitHubCallback({
       request: request("/auth/github/callback", "POST"),
-      oauth: service,
+      github: auth,
       notifyConnected: vi.fn(),
     });
 
     expect(response.status).toBe(405);
-    expect(service.completeAuthorization).not.toHaveBeenCalled();
+    expect(auth.connect).not.toHaveBeenCalled();
   });
 
   it.each([
     ["invalid state", { status: "invalid_state" } as const, 400, "invalid, expired, or already used"],
     ["provider failure", { status: "provider_error", error: new Error("GitHub down") } as const, 502, "could not be completed"],
   ])("returns %i for %s", async (_label, result, expectedStatus, body) => {
-    const service = oauth(result);
+    const auth = github(result);
     const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
 
-    const response = await handleGitHubOAuthCallback({
+    const response = await handleGitHubCallback({
       request: request(),
-      oauth: service,
+      github: auth,
       notifyConnected: vi.fn(),
     });
 
     expect(response.status).toBe(expectedStatus);
     expect(await response.text()).toContain(body);
-    expect(service.completeAuthorization).toHaveBeenCalledWith("state", "code");
+    expect(auth.connect).toHaveBeenCalledWith("state", "code");
     error.mockRestore();
   });
 
   it("succeeds even when the Telegram connected notification fails", async () => {
-    const service = oauth({
+    const auth = github({
       status: "connected",
       telegramUserId: "123",
       user: { id: 1, login: "octocat" },
@@ -57,7 +57,7 @@ describe("GitHub OAuth callback route", () => {
     const notifyConnected = vi.fn().mockRejectedValue(new Error("Telegram unavailable"));
     const warning = vi.spyOn(console, "warn").mockImplementation(() => undefined);
 
-    const response = await handleGitHubOAuthCallback({ request: request(), oauth: service, notifyConnected });
+    const response = await handleGitHubCallback({ request: request(), github: auth, notifyConnected });
 
     expect(response.status).toBe(200);
     expect(await response.text()).toContain("You are connected as @octocat");

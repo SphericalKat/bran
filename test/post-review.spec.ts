@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { createReviewActionService } from "../src/actions/review-action-service";
-import type { GitHubOAuthService } from "../src/auth/github-oauth-service";
+import { postReview } from "../src/actions/post-review";
+import type { GitHubAuth } from "../src/auth/github-auth";
 
 const input = {
   telegramUserId: "123",
@@ -9,27 +9,25 @@ const input = {
   event: "REQUEST_CHANGES" as const,
 };
 
-function oauth(authorization: Awaited<ReturnType<GitHubOAuthService["getAuthorization"]>>): GitHubOAuthService {
+function github(connection: Awaited<ReturnType<GitHubAuth["getConnection"]>>): GitHubAuth {
   return {
-    beginAuthorization: vi.fn(),
-    completeAuthorization: vi.fn(),
-    getAuthorization: vi.fn().mockResolvedValue(authorization),
+    getConnectionUrl: vi.fn(),
+    connect: vi.fn(),
+    getConnection: vi.fn().mockResolvedValue(connection),
     disconnect: vi.fn(),
   };
 }
 
-describe("ReviewActionService", () => {
+describe("postReview", () => {
   it("does not publish for a user without a GitHub connection", async () => {
     const publish = vi.fn();
-    const service = createReviewActionService(oauth(null), publish);
-
-    await expect(service.execute(input)).resolves.toEqual({ status: "not_connected" });
+    await expect(postReview(github(null), input, publish)).resolves.toEqual({ status: "not_connected" });
     expect(publish).not.toHaveBeenCalled();
   });
 
   it("posts using the connected user's token", async () => {
     const publish = vi.fn().mockResolvedValue({ success: true, platform: "github", prNumber: 42 });
-    const service = createReviewActionService(oauth({
+    const auth = github({
       telegramUserId: "123",
       githubUserId: 1,
       githubLogin: "octocat",
@@ -39,9 +37,9 @@ describe("ReviewActionService", () => {
       refreshTokenExpiresAt: null,
       scope: null,
       updatedAt: 1,
-    }), publish);
+    });
 
-    await expect(service.execute(input)).resolves.toEqual({ status: "posted", githubLogin: "octocat" });
+    await expect(postReview(auth, input, publish)).resolves.toEqual({ status: "posted", githubLogin: "octocat" });
     expect(publish).toHaveBeenCalledWith({
       prUrl: input.prUrl,
       reviewText: input.message,
@@ -52,7 +50,7 @@ describe("ReviewActionService", () => {
 
   it("returns the publisher rejection to the caller", async () => {
     const publish = vi.fn().mockResolvedValue({ success: false, platform: "github", error: "Review rejected" });
-    const service = createReviewActionService(oauth({
+    const auth = github({
       telegramUserId: "123",
       githubUserId: 1,
       githubLogin: "octocat",
@@ -62,8 +60,8 @@ describe("ReviewActionService", () => {
       refreshTokenExpiresAt: null,
       scope: null,
       updatedAt: 1,
-    }), publish);
+    });
 
-    await expect(service.execute(input)).resolves.toEqual({ status: "rejected", message: "Review rejected" });
+    await expect(postReview(auth, input, publish)).resolves.toEqual({ status: "rejected", message: "Review rejected" });
   });
 });

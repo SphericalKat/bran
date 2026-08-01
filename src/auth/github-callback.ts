@@ -1,10 +1,10 @@
-import type { GitHubOAuthService } from "./github-oauth-service";
+import type { GitHubAuth } from "./github-auth";
 
-export const GITHUB_OAUTH_CALLBACK_PATH = "/auth/github/callback";
+export const GITHUB_CALLBACK_PATH = "/auth/github/callback";
 
-export async function handleGitHubOAuthCallback(options: {
+export async function handleGitHubCallback(options: {
   request: Request;
-  oauth: GitHubOAuthService;
+  github: GitHubAuth;
   notifyConnected: (telegramUserId: string, githubLogin: string) => Promise<void>;
 }): Promise<Response> {
   if (options.request.method !== "GET") {
@@ -12,7 +12,7 @@ export async function handleGitHubOAuthCallback(options: {
   }
 
   const url = new URL(options.request.url);
-  const result = await options.oauth.completeAuthorization(
+  const result = await options.github.connect(
     url.searchParams.get("state") ?? "",
     url.searchParams.get("code") ?? "",
   );

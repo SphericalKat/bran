@@ -1,9 +1,9 @@
 import { DurableObject } from "cloudflare:workers";
 import {
   createOAuthNonce,
-  refreshGitHubUserAccessToken,
+  refreshAccessToken,
+  type AccessToken,
   type GitHubUser,
-  type GitHubUserAccessToken,
 } from "./github-oauth-client";
 import type { AppEnv } from "../env";
 
@@ -60,7 +60,7 @@ export class GitHubAuthStore extends DurableObject<AppEnv> {
   storeAuthorization(
     telegramUserId: string,
     user: GitHubUser,
-    token: GitHubUserAccessToken,
+    token: AccessToken,
     now = Date.now(),
   ): void {
     requireTelegramUserId(telegramUserId);
@@ -145,7 +145,7 @@ export class GitHubAuthStore extends DurableObject<AppEnv> {
     authorization: GitHubAuthorization,
     now: number,
   ): Promise<GitHubAuthorization | null> {
-    const refreshed = await refreshGitHubUserAccessToken(
+    const refreshed = await refreshAccessToken(
       {
         clientId: this.env.GITHUB_APP_CLIENT_ID,
         clientSecret: this.env.GITHUB_APP_CLIENT_SECRET,
@@ -153,7 +153,7 @@ export class GitHubAuthStore extends DurableObject<AppEnv> {
       },
       authorization.refreshToken!,
     );
-    const mergedToken: GitHubUserAccessToken = {
+    const mergedToken: AccessToken = {
       ...refreshed,
       scope: refreshed.scope ?? authorization.scope,
       refreshToken: refreshed.refreshToken ?? authorization.refreshToken,

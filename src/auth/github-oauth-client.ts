@@ -4,13 +4,13 @@ const GITHUB_API_URL = "https://api.github.com";
 const GITHUB_API_VERSION = "2022-11-28";
 const textEncoder = new TextEncoder();
 
-export interface GitHubAppOAuthConfig {
+export interface OAuthConfig {
   clientId: string;
   clientSecret: string;
   redirectUri: string;
 }
 
-export interface GitHubAuthorizationUrlOptions {
+interface AuthorizationUrlOptions {
   clientId: string;
   redirectUri: string;
   state: string;
@@ -18,7 +18,7 @@ export interface GitHubAuthorizationUrlOptions {
   allowSignup?: boolean;
 }
 
-export interface GitHubUserAccessToken {
+export interface AccessToken {
   accessToken: string;
   tokenType: string;
   scope: string | null;
@@ -48,7 +48,7 @@ export class GitHubOAuthError extends Error {
 }
 
 /** Creates the GitHub App user-to-server authorization URL. */
-export function buildGitHubAuthorizationUrl(options: GitHubAuthorizationUrlOptions): string {
+export function buildAuthorizationUrl(options: AuthorizationUrlOptions): string {
   requireNonEmpty(options.clientId, "GitHub client ID");
   requireNonEmpty(options.redirectUri, "GitHub redirect URI");
   requireNonEmpty(options.state, "OAuth state");
@@ -139,11 +139,11 @@ export async function verifyOAuthState(
 }
 
 /** Exchanges a GitHub App callback code for an expiring user access token. */
-export async function exchangeGitHubAuthorizationCode(
-  config: GitHubAppOAuthConfig,
+export async function exchangeAuthorizationCode(
+  config: OAuthConfig,
   code: string,
   fetchImpl: typeof fetch = globalThis.fetch,
-): Promise<GitHubUserAccessToken> {
+): Promise<AccessToken> {
   requireNonEmpty(code, "GitHub authorization code");
   return requestToken(config, {
     client_id: config.clientId,
@@ -154,11 +154,11 @@ export async function exchangeGitHubAuthorizationCode(
 }
 
 /** Refreshes an expiring GitHub App user access token. */
-export async function refreshGitHubUserAccessToken(
-  config: GitHubAppOAuthConfig,
+export async function refreshAccessToken(
+  config: OAuthConfig,
   refreshToken: string,
   fetchImpl: typeof fetch = globalThis.fetch,
-): Promise<GitHubUserAccessToken> {
+): Promise<AccessToken> {
   requireNonEmpty(refreshToken, "GitHub refresh token");
   return requestToken(config, {
     client_id: config.clientId,
@@ -169,7 +169,7 @@ export async function refreshGitHubUserAccessToken(
 }
 
 /** Fetches the GitHub account for a user access token. */
-export async function fetchGitHubUser(
+export async function fetchCurrentUser(
   accessToken: string,
   fetchImpl: typeof fetch = globalThis.fetch,
 ): Promise<GitHubUser> {
@@ -194,10 +194,10 @@ export async function fetchGitHubUser(
 }
 
 async function requestToken(
-  config: GitHubAppOAuthConfig,
+  config: OAuthConfig,
   fields: Record<string, string>,
   fetchImpl: typeof fetch,
-): Promise<GitHubUserAccessToken> {
+): Promise<AccessToken> {
   requireNonEmpty(config.clientId, "GitHub client ID");
   requireNonEmpty(config.clientSecret, "GitHub client secret");
   requireNonEmpty(config.redirectUri, "GitHub redirect URI");
