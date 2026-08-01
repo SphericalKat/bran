@@ -1,3 +1,5 @@
+import { Bot, webhookCallback } from "grammy";
+
 /**
  * Welcome to Cloudflare Workers! This is your first worker.
  *
@@ -10,9 +12,16 @@
  *
  * Learn more at https://developers.cloudflare.com/workers/
  */
+export { ReviewerAgent } from "./agents/reviewer";
+
+export interface Env {
+	TELEGRAM_BOT_TOKEN: string;
+}
 
 export default {
 	async fetch(request, env, ctx): Promise<Response> {
-		return new Response("Hello World!");
+		const bot = new Bot(env.TELEGRAM_BOT_TOKEN);
+		
+		return webhookCallback(bot, "cloudflare-mod")(request)
 	},
 } satisfies ExportedHandler<Env>;
