@@ -20,6 +20,10 @@
 			{
 				"name": "GITHUB_AUTH_STORE",
 				"class_name": "GitHubAuthStore"
+			},
+			{
+				"name": "REVIEWER_AGENT",
+				"class_name": "ReviewerAgent"
 			}
 		]
 	},

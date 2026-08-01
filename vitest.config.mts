@@ -5,6 +5,18 @@ export default defineWorkersConfig({
 		poolOptions: {
 			workers: {
 				wrangler: { configPath: "./wrangler.jsonc" },
+				miniflare: {
+					durableObjects: {
+						GITHUB_AUTH_STORE: {
+							className: "GitHubAuthStore",
+							useSQLite: true,
+						},
+						REVIEWER_AGENT: {
+							className: "ReviewerAgent",
+							useSQLite: true,
+						},
+					},
+				},
 			},
 		},
 	},

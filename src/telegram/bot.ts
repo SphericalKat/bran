@@ -1,19 +1,21 @@
 import { Bot, webhookCallback, type Context } from "grammy";
-import { postReview } from "../actions/post-review";
-import type { GitHubAuth } from "../auth/github-auth";
+import type { GitHub } from "../github";
 import type { GitHubReviewEvent } from "../reviewer/github-api";
-import { parseReviewAction, privateTelegramUserId } from "./command-utils";
+import { parsePullRequestUrl, parseReviewAction, privateTelegramUserId } from "./command-utils";
 
 export interface TelegramBotDependencies {
   token: string;
-  github: GitHubAuth;
+  github: GitHub;
 }
 
 export function handleTelegramWebhook(
   request: Request,
   dependencies: TelegramBotDependencies,
 ): Promise<Response> {
-  return webhookCallback(createTelegramBot(dependencies), "cloudflare-mod")(request);
+  return webhookCallback(createTelegramBot(dependencies), "cloudflare-mod", {
+    onTimeout: "return",
+    timeoutMilliseconds: 9_000,
+  })(request);
 }
 
 export async function notifyGitHubConnected(
@@ -32,24 +34,24 @@ function createTelegramBot(dependencies: TelegramBotDependencies): Bot {
 
   bot.command("start", async (ctx) => {
     await ctx.reply(
-      "Use /connect to authorize GitHub. Then use /comment, /approve, or /requestchanges with a pull-request URL and message.",
+      "Use /connect to authorize GitHub. Then use /review with a pull-request URL. You can also use /comment, /approve, or /requestchanges with a URL and message.",
     );
   });
 
   bot.command(["connect", "login"], async (ctx) => {
     const userId = await requirePrivateUser(ctx);
     if (!userId) return;
-    const authorizationUrl = await dependencies.github.getConnectionUrl(userId);
+    const authorizationUrl = await dependencies.github.connectionUrl(userId);
     await ctx.reply(`Authorize Fortagram to act as your GitHub user:\n${authorizationUrl}`);
   });
 
   bot.command("status", async (ctx) => {
     const userId = await requirePrivateUser(ctx);
     if (!userId) return;
-    const connection = await dependencies.github.getConnection(userId);
+    const githubLogin = await dependencies.github.connectedLogin(userId);
     await ctx.reply(
-      connection
-        ? `Connected to GitHub as @${connection.githubLogin}.`
+      githubLogin
+        ? `Connected to GitHub as @${githubLogin}.`
         : "GitHub is not connected. Use /connect first.",
     );
   });
@@ -63,6 +65,32 @@ function createTelegramBot(dependencies: TelegramBotDependencies): Bot {
     );
   });
 
+  bot.command("review", async (ctx) => {
+    const userId = await requirePrivateUser(ctx);
+    if (!userId) return;
+    const prUrl = parsePullRequestUrl(String(ctx.match ?? ""));
+    if (!prUrl) {
+      await ctx.reply("Usage: /review https://github.com/owner/repository/pull/123");
+      return;
+    }
+
+    await ctx.reply("Review started. I’ll post the result to GitHub when it is ready.");
+    const result = await dependencies.github.reviewPullRequest({
+      telegramUserId: userId,
+      prUrl,
+    });
+    if (result.status === "not_connected") {
+      await ctx.reply("Connect GitHub with /connect before reviewing a pull request.");
+    } else if (result.status === "posted") {
+      const findingLabel = result.findings === 1 ? "finding" : "findings";
+      await ctx.reply(
+        `Review posted as @${result.githubLogin} with ${result.findings} ${findingLabel}.`,
+      );
+    } else {
+      await ctx.reply(`Review failed: ${result.message}`);
+    }
+  });
+
   registerReviewAction(bot, dependencies.github, "comment", "COMMENT");
   registerReviewAction(bot, dependencies.github, "approve", "APPROVE");
   registerReviewAction(bot, dependencies.github, "requestchanges", "REQUEST_CHANGES");
@@ -71,7 +99,7 @@ function createTelegramBot(dependencies: TelegramBotDependencies): Bot {
 
 function registerReviewAction(
   bot: Bot,
-  github: GitHubAuth,
+  github: GitHub,
   command: string,
   event: GitHubReviewEvent,
 ): void {
@@ -86,7 +114,7 @@ function registerReviewAction(
       return;
     }
 
-    const result = await postReview(github, {
+    const result = await github.review({
       telegramUserId: userId,
       prUrl: parsed.prUrl,
       message: parsed.message,

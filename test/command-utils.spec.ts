@@ -1,7 +1,19 @@
 import { describe, expect, it } from "vitest";
-import { parseReviewAction, privateTelegramUserId } from "../src/telegram/command-utils";
+import {
+  parsePullRequestUrl,
+  parseReviewAction,
+  privateTelegramUserId,
+} from "../src/telegram/command-utils";
 
 describe("command utilities", () => {
+  it("parses a pull request URL without requiring a message", () => {
+    expect(parsePullRequestUrl(" HTTPS://github.com/octo/repo/pull/42/ ")).toBe(
+      "HTTPS://github.com/octo/repo/pull/42",
+    );
+    expect(parsePullRequestUrl("https://github.com/octo/repo/issues/42")).toBeNull();
+    expect(parsePullRequestUrl("https://github.com/octo/repo/pull/42 extra")).toBeNull();
+  });
+
   it("parses a GitHub PR URL and preserves a multiline review message", () => {
     expect(parseReviewAction("  HTTPS://github.com/octo/repo/pull/42   First line\nSecond line  ")).toEqual({
       prUrl: "HTTPS://github.com/octo/repo/pull/42",

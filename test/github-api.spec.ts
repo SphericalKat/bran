@@ -78,6 +78,59 @@ describe("GitHub API", () => {
     );
   });
 
+  it("reads files and searches code without a local checkout", async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(response({
+        type: "file",
+        path: "src/review agent.ts",
+        encoding: "base64",
+        content: "Y29udGVudA==",
+      }))
+      .mockResolvedValueOnce(response({ items: [{ path: "src/review agent.ts" }] }));
+    const api = createGitHubApi({ token: "secret", fetch });
+
+    await api.getContent("octo", "repo", "src/review agent.ts", "head/sha");
+    await api.searchCode("octo", "repo", "ReviewAgent");
+
+    expect(fetch.mock.calls[0]?.[0]).toBe(
+      "https://api.github.com/repos/octo/repo/contents/src/review%20agent.ts?ref=head%2Fsha",
+    );
+    expect(fetch.mock.calls[1]?.[0]).toBe(
+      "https://api.github.com/search/code?q=ReviewAgent%20repo%3Aocto%2Frepo&per_page=20",
+    );
+  });
+
+  it("checks commit ancestry before using an incremental diff", async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(response({ status: "diverged" }));
+    const api = createGitHubApi({ token: "secret", fetch });
+
+    await expect(api.compare("octo", "repo", "old", "head")).resolves.toEqual({
+      status: "diverged",
+    });
+  });
+
+  it("paginates prior comments so older review markers are not lost", async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(response(
+        [{ body: "first page" }],
+        {
+          headers: {
+            Link: '<https://api.github.com/repos/octo/repo/issues/42/comments?per_page=100&page=2>; rel="next", <https://api.github.com/repos/octo/repo/issues/42/comments?per_page=100&page=2>; rel="last"',
+          },
+        },
+      ))
+      .mockResolvedValueOnce(response([{ body: "second page" }]));
+    const api = createGitHubApi({ token: "secret", fetch });
+
+    await expect(api.getIssueComments("octo", "repo", 42)).resolves.toEqual([
+      { body: "first page" },
+      { body: "second page" },
+    ]);
+    expect(fetch.mock.calls[1]?.[0]).toBe(
+      "https://api.github.com/repos/octo/repo/issues/42/comments?per_page=100&page=2",
+    );
+  });
+
   it("reports GitHub failures without exposing the token or response body", async () => {
     const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(response(
       { message: "token secret" },

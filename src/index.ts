@@ -1,5 +1,6 @@
 import { GitHubAuthStore } from "./auth/github-auth-store";
-import { createGitHubAuth } from "./auth/github-auth";
+import { ReviewerAgent } from "./agent/ReviewerAgent";
+import { GitHub } from "./github";
 import {
   GITHUB_CALLBACK_PATH,
   handleGitHubCallback,
@@ -7,10 +8,10 @@ import {
 import type { AppEnv } from "./env";
 import { handleTelegramWebhook, notifyGitHubConnected } from "./telegram/bot";
 
-export { GitHubAuthStore };
+export { GitHubAuthStore, ReviewerAgent };
 
 export default {
-  async fetch(request, env): Promise<Response> {
+  async fetch(request, env, _context): Promise<Response> {
     const url = new URL(request.url);
     if (request.method === "GET" && url.pathname === "/") {
       return new Response("Fortagram is running", {
@@ -18,7 +19,7 @@ export default {
       });
     }
 
-    const github = createGitHubAuth(env);
+    const github = new GitHub(env);
     if (url.pathname === GITHUB_CALLBACK_PATH) {
       return handleGitHubCallback({
         request,

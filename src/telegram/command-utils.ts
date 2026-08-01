@@ -3,6 +3,12 @@ export interface ParsedReviewAction {
   message: string;
 }
 
+export function parsePullRequestUrl(value: string): string | null {
+  return value.trim().match(
+    /^(https:\/\/github\.com\/[^\s/]+\/[^\s/]+\/pull\/\d+)\/?$/i,
+  )?.[1] ?? null;
+}
+
 export function parseReviewAction(value: string): ParsedReviewAction | null {
   const match = value.trim().match(
     /^(https:\/\/github\.com\/[^\s/]+\/[^\s/]+\/pull\/\d+)\s+([\s\S]+)$/i,

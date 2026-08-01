@@ -8,7 +8,7 @@ export interface GitHubPullRequestRef {
 
 export interface GitHubPullRequest {
   base: GitHubPullRequestRef;
-  head: GitHubPullRequestRef;
+  head: GitHubPullRequestRef & { repo?: { full_name: string } | null };
   title?: string;
   body?: string | null;
   state?: string;
@@ -30,13 +30,31 @@ export interface GitHubBranch {
   commit: { sha: string };
 }
 
+export interface GitHubContent {
+  type: "file" | "dir";
+  path: string;
+  content?: string;
+  encoding?: string;
+}
+
+export interface GitHubCodeSearchResult {
+  items: Array<{ path: string }>;
+}
+
+export interface GitHubComparison {
+  status: "ahead" | "behind" | "diverged" | "identical";
+}
+
 export interface GitHubApi {
   getPullRequest(owner: string, repo: string, prNumber: number): Promise<GitHubPullRequest>;
   getBranch(owner: string, repo: string, branch: string): Promise<GitHubBranch>;
   getPullRequestDiff(owner: string, repo: string, prNumber: number): Promise<string>;
   compareDiff(owner: string, repo: string, base: string, head: string): Promise<string>;
+  compare(owner: string, repo: string, base: string, head: string): Promise<GitHubComparison>;
   getIssueComments(owner: string, repo: string, prNumber: number): Promise<GitHubComment[]>;
   getPullRequestReviews(owner: string, repo: string, prNumber: number): Promise<GitHubComment[]>;
+  getContent(owner: string, repo: string, path: string, ref: string): Promise<GitHubContent | GitHubContent[]>;
+  searchCode(owner: string, repo: string, query: string): Promise<GitHubCodeSearchResult>;
   submitPullRequestReview(
     owner: string,
     repo: string,
@@ -58,11 +76,11 @@ export function createGitHubApi(options: {
     throw new Error("A GitHub token is required to review a pull request");
   }
 
-  const request = async <T>(
+  const requestPage = async <T>(
     path: string,
     accept: string,
     init: RequestInit = {},
-  ): Promise<T> => {
+  ): Promise<{ value: T; nextPath: string | null }> => {
     const response = await fetchImpl(`${apiUrl}${path}`, {
       ...init,
       headers: {
@@ -84,9 +102,31 @@ export function createGitHubApi(options: {
     }
 
     if (accept === "application/vnd.github.diff") {
-      return await response.text() as T;
+      return { value: await response.text() as T, nextPath: null };
     }
-    return await response.json() as T;
+    return {
+      value: await response.json() as T,
+      nextPath: nextPagePath(response.headers, apiUrl),
+    };
+  };
+
+  const request = async <T>(
+    path: string,
+    accept: string,
+    init: RequestInit = {},
+  ): Promise<T> => (await requestPage<T>(path, accept, init)).value;
+
+  const paginate = async <T>(path: string): Promise<T[]> => {
+    const values: T[] = [];
+    const visited = new Set<string>();
+    while (path) {
+      if (visited.has(path)) throw new Error("GitHub pagination returned a loop");
+      visited.add(path);
+      const page = await requestPage<T[]>(path, "application/vnd.github+json");
+      values.push(...page.value);
+      path = page.nextPath ?? "";
+    }
+    return values;
   };
 
   const repositoryPath = (owner: string, repo: string): string =>
@@ -117,15 +157,33 @@ export function createGitHubApi(options: {
         "application/vnd.github.diff",
       );
     },
-    getIssueComments(owner, repo, prNumber) {
-      return request<GitHubComment[]>(
-        `${repositoryPath(owner, repo)}/issues/${prNumber}/comments?per_page=100`,
+    compare(owner, repo, base, head) {
+      return request<GitHubComparison>(
+        `${repositoryPath(owner, repo)}/compare/${encodeURIComponent(base)}...${encodeURIComponent(head)}`,
         "application/vnd.github+json",
       );
     },
+    getIssueComments(owner, repo, prNumber) {
+      return paginate<GitHubComment>(
+        `${repositoryPath(owner, repo)}/issues/${prNumber}/comments?per_page=100`,
+      );
+    },
     getPullRequestReviews(owner, repo, prNumber) {
-      return request<GitHubComment[]>(
+      return paginate<GitHubComment>(
         `${repositoryPath(owner, repo)}/pulls/${prNumber}/reviews?per_page=100`,
+      );
+    },
+    getContent(owner, repo, path, ref) {
+      const encodedPath = path.split("/").map(encodeURIComponent).join("/");
+      return request<GitHubContent | GitHubContent[]>(
+        `${repositoryPath(owner, repo)}/contents/${encodedPath}?ref=${encodeURIComponent(ref)}`,
+        "application/vnd.github+json",
+      );
+    },
+    searchCode(owner, repo, query) {
+      const qualifiedQuery = `${query} repo:${owner}/${repo}`;
+      return request<GitHubCodeSearchResult>(
+        `/search/code?q=${encodeURIComponent(qualifiedQuery)}&per_page=20`,
         "application/vnd.github+json",
       );
     },
@@ -141,4 +199,18 @@ export function createGitHubApi(options: {
       );
     },
   };
+}
+
+function nextPagePath(headers: Headers, apiUrl: string): string | null {
+  const next = headers.get("link")
+    ?.split(",")
+    .map((link) => link.trim().match(/^<([^>]+)>;\s*rel="([^"]+)"$/))
+    .find((match) => match?.[2] === "next")?.[1];
+  if (!next) return null;
+
+  const pageUrl = new URL(next, apiUrl);
+  if (pageUrl.origin !== new URL(apiUrl).origin) {
+    throw new Error("GitHub pagination returned an unexpected origin");
+  }
+  return `${pageUrl.pathname}${pageUrl.search}`;
 }

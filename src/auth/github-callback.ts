@@ -1,10 +1,10 @@
-import type { GitHubAuth } from "./github-auth";
+import type { GitHub } from "../github";
 
 export const GITHUB_CALLBACK_PATH = "/auth/github/callback";
 
 export async function handleGitHubCallback(options: {
   request: Request;
-  github: GitHubAuth;
+  github: Pick<GitHub, "finishConnection">;
   notifyConnected: (telegramUserId: string, githubLogin: string) => Promise<void>;
 }): Promise<Response> {
   if (options.request.method !== "GET") {
@@ -12,7 +12,7 @@ export async function handleGitHubCallback(options: {
   }
 
   const url = new URL(options.request.url);
-  const result = await options.github.connect(
+  const result = await options.github.finishConnection(
     url.searchParams.get("state") ?? "",
     url.searchParams.get("code") ?? "",
   );
@@ -37,7 +37,7 @@ export async function handleGitHubCallback(options: {
   }
 
   try {
-    await options.notifyConnected(result.telegramUserId, result.user.login);
+    await options.notifyConnected(result.telegramUserId, result.githubLogin);
   } catch (error) {
     console.warn(JSON.stringify({
       event: "github_oauth_notification_failed",
@@ -46,7 +46,7 @@ export async function handleGitHubCallback(options: {
   }
   return oauthHtml(
     "GitHub connected",
-    `You are connected as @${result.user.login}. You can return to Telegram.`,
+    `You are connected as @${result.githubLogin}. You can return to Telegram.`,
   );
 }
 
