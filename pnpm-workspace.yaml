@@ -6,3 +6,6 @@ onlyBuiltDependencies:
   - '@google/genai'
   - core-js-pure
   - protobufjs
+
+patchedDependencies:
+  '@earendil-works/pi-ai@0.83.0': patches/@earendil-works__pi-ai@0.83.0.patch

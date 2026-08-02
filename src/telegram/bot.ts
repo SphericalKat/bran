@@ -1,4 +1,4 @@
-import { Bot, webhookCallback, type BotConfig, type Context } from "grammy";
+import { Bot, GrammyError, webhookCallback, type BotConfig, type Context } from "grammy";
 import type { GitHub } from "../github";
 import type { GitHubReviewEvent } from "../reviewer/github-api";
 import { parsePullRequestUrl, parseReviewAction, privateTelegramUserId } from "./command-utils";
@@ -43,6 +43,15 @@ function createTelegramBot(dependencies: TelegramBotDependencies): Bot {
       fetch: dependencies.fetch,
     },
     botInfo: dependencies.botInfo,
+  });
+
+  bot.use(async (_ctx, next) => {
+    try {
+      await next();
+    } catch (error) {
+      if (error instanceof GrammyError && error.error_code === 403) return;
+      throw error;
+    }
   });
 
   bot.command("start", async (ctx) => {

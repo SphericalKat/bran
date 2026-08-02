@@ -2,6 +2,42 @@ import { describe, expect, it, vi } from "vitest";
 import type { GitHub } from "../src/github";
 
 describe("Telegram review failure", () => {
+  it("acknowledges an update when the bot was kicked from the chat", async () => {
+    const telegramFetch = vi.fn(async () => Response.json(
+      {
+        ok: false,
+        error_code: 403,
+        description: "Forbidden: bot was kicked from the group chat",
+      },
+      { status: 403 },
+    ));
+    const { handleTelegramWebhook } = await import("../src/telegram/bot");
+    const request = new Request("https://bot.example/telegram", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        update_id: 2,
+        message: {
+          message_id: 1,
+          date: 1,
+          chat: { id: -42, type: "group", title: "Former group" },
+          from: { id: 42, is_bot: false, first_name: "Kat" },
+          text: "/start",
+          entities: [{ offset: 0, length: 6, type: "bot_command" }],
+        },
+      }),
+    });
+
+    const response = await handleTelegramWebhook(request, {
+      token: "token",
+      github: {} as GitHub,
+      fetch: telegramFetch as typeof globalThis.fetch,
+      botInfo: { id: 1, is_bot: true, first_name: "Fortagram", username: "fortagram_bot" },
+    });
+
+    expect(response.status).toBe(200);
+  });
+
   it("acknowledges an update when the review runner already reported its failure", async () => {
     let nextMessageId = 100;
     let edits = 0;

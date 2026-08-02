@@ -1,3 +1,5 @@
+import { Octokit } from "@octokit/rest";
+
 const DEFAULT_GITHUB_API_URL = "https://api.github.com";
 const GITHUB_API_VERSION = "2022-11-28";
 
@@ -24,6 +26,22 @@ export interface GitHubComment {
 }
 
 export type GitHubReviewEvent = "COMMENT" | "APPROVE" | "REQUEST_CHANGES";
+
+export interface GitHubReviewComment {
+  path: string;
+  body: string;
+  line: number;
+  side: "LEFT" | "RIGHT";
+  startLine?: number;
+  startSide?: "LEFT" | "RIGHT";
+}
+
+export interface GitHubPullRequestReview {
+  body: string;
+  event: GitHubReviewEvent;
+  commitId?: string;
+  comments?: GitHubReviewComment[];
+}
 
 export interface GitHubBranch {
   name: string;
@@ -59,8 +77,7 @@ export interface GitHubApi {
     owner: string,
     repo: string,
     prNumber: number,
-    body: string,
-    event?: GitHubReviewEvent,
+    review: GitHubPullRequestReview,
   ): Promise<void>;
 }
 
@@ -69,148 +86,164 @@ export function createGitHubApi(options: {
   fetch?: typeof globalThis.fetch;
   apiUrl?: string;
 }): GitHubApi {
-  const fetchImpl = options.fetch ?? globalThis.fetch;
-  const apiUrl = (options.apiUrl ?? DEFAULT_GITHUB_API_URL).replace(/\/$/, "");
-
   if (!options.token) {
     throw new Error("A GitHub token is required to review a pull request");
   }
-
-  const requestPage = async <T>(
-    path: string,
-    accept: string,
-    init: RequestInit = {},
-  ): Promise<{ value: T; nextPath: string | null }> => {
-    const response = await fetchImpl(`${apiUrl}${path}`, {
-      ...init,
-      headers: {
-        ...init.headers,
-        Accept: accept,
-        Authorization: `Bearer ${options.token}`,
-        "User-Agent": "fortagram",
-        "X-GitHub-Api-Version": GITHUB_API_VERSION,
-      },
-    });
-
-    if (!response.ok) {
-      const requestId = response.headers.get("x-github-request-id");
-      throw new Error(
-        `GitHub API request failed for ${init.method ?? "GET"} ${path} (${response.status} ${response.statusText})${
-          requestId ? ` [request ${requestId}]` : ""
-        }`,
-      );
+  const octokit = new Octokit({
+    auth: options.token,
+    baseUrl: (options.apiUrl ?? DEFAULT_GITHUB_API_URL).replace(/\/$/, ""),
+    userAgent: "fortagram",
+    request: {
+      fetch: options.fetch ?? globalThis.fetch,
+    },
+    log: { debug() {}, info() {}, warn() {}, error() {} },
+  });
+  octokit.hook.before("request", (request) => {
+    request.headers["x-github-api-version"] = GITHUB_API_VERSION;
+  });
+  const call = async <T>(request: () => Promise<T>): Promise<T> => {
+    try {
+      return await request();
+    } catch (error) {
+      throw readableGitHubError(error);
     }
-
-    if (accept === "application/vnd.github.diff") {
-      return { value: await response.text() as T, nextPath: null };
-    }
-    return {
-      value: await response.json() as T,
-      nextPath: nextPagePath(response.headers, apiUrl),
-    };
   };
-
-  const request = async <T>(
-    path: string,
-    accept: string,
-    init: RequestInit = {},
-  ): Promise<T> => (await requestPage<T>(path, accept, init)).value;
-
-  const paginate = async <T>(path: string): Promise<T[]> => {
-    const values: T[] = [];
-    const visited = new Set<string>();
-    while (path) {
-      if (visited.has(path)) throw new Error("GitHub pagination returned a loop");
-      visited.add(path);
-      const page = await requestPage<T[]>(path, "application/vnd.github+json");
-      values.push(...page.value);
-      path = page.nextPath ?? "";
-    }
-    return values;
-  };
-
-  const repositoryPath = (owner: string, repo: string): string =>
-    `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`;
 
   return {
-    getPullRequest(owner, repo, prNumber) {
-      return request<GitHubPullRequest>(
-        `${repositoryPath(owner, repo)}/pulls/${prNumber}`,
-        "application/vnd.github+json",
-      );
+    async getPullRequest(owner, repo, prNumber) {
+      const { data } = await call(() => octokit.rest.pulls.get({ owner, repo, pull_number: prNumber }));
+      return data as GitHubPullRequest;
     },
-    getBranch(owner, repo, branch) {
-      return request<GitHubBranch>(
-        `${repositoryPath(owner, repo)}/branches/${encodeURIComponent(branch)}`,
-        "application/vnd.github+json",
-      );
+    async getBranch(owner, repo, branch) {
+      const { data } = await call(() => octokit.rest.repos.getBranch({ owner, repo, branch }));
+      return data;
     },
-    getPullRequestDiff(owner, repo, prNumber) {
-      return request<string>(
-        `${repositoryPath(owner, repo)}/pulls/${prNumber}`,
-        "application/vnd.github.diff",
-      );
+    async getPullRequestDiff(owner, repo, prNumber) {
+      const { data } = await call(() => octokit.rest.pulls.get({
+        owner,
+        repo,
+        pull_number: prNumber,
+        headers: { accept: "application/vnd.github.diff" },
+      }));
+      return data as unknown as string;
     },
-    compareDiff(owner, repo, base, head) {
-      return request<string>(
-        `${repositoryPath(owner, repo)}/compare/${encodeURIComponent(base)}...${encodeURIComponent(head)}`,
-        "application/vnd.github.diff",
-      );
+    async compareDiff(owner, repo, base, head) {
+      const { data } = await call(() => octokit.rest.repos.compareCommitsWithBasehead({
+        owner,
+        repo,
+        basehead: `${base}...${head}`,
+        headers: { accept: "application/vnd.github.diff" },
+      }));
+      return data as unknown as string;
     },
-    compare(owner, repo, base, head) {
-      return request<GitHubComparison>(
-        `${repositoryPath(owner, repo)}/compare/${encodeURIComponent(base)}...${encodeURIComponent(head)}`,
-        "application/vnd.github+json",
-      );
+    async compare(owner, repo, base, head) {
+      const { data } = await call(() => octokit.rest.repos.compareCommitsWithBasehead({
+        owner,
+        repo,
+        basehead: `${base}...${head}`,
+      }));
+      return { status: data.status } as GitHubComparison;
     },
-    getIssueComments(owner, repo, prNumber) {
-      return paginate<GitHubComment>(
-        `${repositoryPath(owner, repo)}/issues/${prNumber}/comments?per_page=100`,
-      );
+    async getIssueComments(owner, repo, prNumber) {
+      const comments = await call(() => octokit.paginate(octokit.rest.issues.listComments, {
+        owner,
+        repo,
+        issue_number: prNumber,
+        per_page: 100,
+      }));
+      return comments.map(toGitHubComment);
     },
-    getPullRequestReviews(owner, repo, prNumber) {
-      return paginate<GitHubComment>(
-        `${repositoryPath(owner, repo)}/pulls/${prNumber}/reviews?per_page=100`,
-      );
+    async getPullRequestReviews(owner, repo, prNumber) {
+      const reviews = await call(() => octokit.paginate(octokit.rest.pulls.listReviews, {
+        owner,
+        repo,
+        pull_number: prNumber,
+        per_page: 100,
+      }));
+      return reviews.map(toGitHubComment);
     },
-    getContent(owner, repo, path, ref) {
-      const encodedPath = path.split("/").map(encodeURIComponent).join("/");
-      return request<GitHubContent | GitHubContent[]>(
-        `${repositoryPath(owner, repo)}/contents/${encodedPath}?ref=${encodeURIComponent(ref)}`,
-        "application/vnd.github+json",
-      );
+    async getContent(owner, repo, path, ref) {
+      const { data } = await call(() => octokit.rest.repos.getContent({ owner, repo, path, ref }));
+      return data as unknown as GitHubContent | GitHubContent[];
     },
-    searchCode(owner, repo, query) {
+    async searchCode(owner, repo, query) {
       const qualifiedQuery = `${query} repo:${owner}/${repo}`;
-      return request<GitHubCodeSearchResult>(
-        `/search/code?q=${encodeURIComponent(qualifiedQuery)}&per_page=20`,
-        "application/vnd.github+json",
-      );
+      const { data } = await call(() => octokit.rest.search.code({ q: qualifiedQuery, per_page: 20 }));
+      return { items: data.items.map(({ path }) => ({ path })) };
     },
-    async submitPullRequestReview(owner, repo, prNumber, body, event = "COMMENT") {
-      await request<unknown>(
-        `${repositoryPath(owner, repo)}/pulls/${prNumber}/reviews`,
-        "application/vnd.github+json",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ body, event }),
-        },
-      );
+    async submitPullRequestReview(owner, repo, prNumber, review) {
+      await call(() => octokit.rest.pulls.createReview({
+        owner,
+        repo,
+        pull_number: prNumber,
+        body: review.body,
+        event: review.event,
+        commit_id: review.commitId,
+        comments: review.comments?.map((comment) => ({
+          path: comment.path,
+          body: comment.body,
+          line: comment.line,
+          side: comment.side,
+          start_line: comment.startLine,
+          start_side: comment.startSide,
+        })),
+      }));
     },
   };
 }
 
-function nextPagePath(headers: Headers, apiUrl: string): string | null {
-  const next = headers.get("link")
-    ?.split(",")
-    .map((link) => link.trim().match(/^<([^>]+)>;\s*rel="([^"]+)"$/))
-    .find((match) => match?.[2] === "next")?.[1];
-  if (!next) return null;
+function toGitHubComment(comment: {
+  body?: string | null;
+  created_at?: string;
+  user?: { login: string } | null;
+}): GitHubComment {
+  return {
+    body: comment.body ?? undefined,
+    created_at: comment.created_at,
+    user: comment.user ? { login: comment.user.login } : undefined,
+  };
+}
 
-  const pageUrl = new URL(next, apiUrl);
-  if (pageUrl.origin !== new URL(apiUrl).origin) {
-    throw new Error("GitHub pagination returned an unexpected origin");
+function readableGitHubError(error: unknown): Error {
+  if (!isOctokitRequestError(error)) {
+    return error instanceof Error ? error : new Error(String(error));
   }
-  return `${pageUrl.pathname}${pageUrl.search}`;
+  const requestUrl = new URL(error.request.url);
+  const path = `${requestUrl.pathname}${requestUrl.search}`;
+  const requestId = error.response?.headers["x-github-request-id"];
+  const status = `${error.status}${statusText(error.status) ? ` ${statusText(error.status)}` : ""}`;
+  return new Error(
+    `GitHub API request failed for ${error.request.method} ${path} (${status})${
+      requestId ? ` [request ${requestId}]` : ""
+    }`,
+  );
+}
+
+function isOctokitRequestError(error: unknown): error is {
+  status: number;
+  request: { method: string; url: string };
+  response?: { headers: Record<string, string> };
+} {
+  if (!error || typeof error !== "object") return false;
+  const value = error as Record<string, unknown>;
+  if (typeof value.status !== "number" || !value.request || typeof value.request !== "object") {
+    return false;
+  }
+  const request = value.request as Record<string, unknown>;
+  return typeof request.method === "string" && typeof request.url === "string";
+}
+
+function statusText(status: number): string {
+  return ({
+    400: "Bad Request",
+    401: "Unauthorized",
+    403: "Forbidden",
+    404: "Not Found",
+    409: "Conflict",
+    422: "Unprocessable Entity",
+    429: "Too Many Requests",
+    500: "Internal Server Error",
+    502: "Bad Gateway",
+    503: "Service Unavailable",
+  } as Record<number, string>)[status] ?? "";
 }

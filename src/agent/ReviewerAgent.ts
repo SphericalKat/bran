@@ -91,7 +91,6 @@ export class ReviewerAgent extends Agent<AppEnv, ReviewerAgentState> {
           prUrl: input.prUrl,
           review: generated.review,
           githubToken: input.githubToken,
-          event: "COMMENT",
           model: generated.model,
           metricsFooter: generated.metricsFooter,
           headSha: generated.headSha,

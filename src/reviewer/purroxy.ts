@@ -37,13 +37,14 @@ export function resolvePurroxyModel(value: string, lookup?: PurroxyModelLookup):
   const modelId = value.slice(separator + 1);
   const upstream = findUpstreamModel(route.metadataProviders, modelId, lookup);
   const reasoning = upstream?.reasoning ?? inferReasoning(routeName, modelId);
-  const compat = route.api === "openai-completions"
+  const api = apiForModel(routeName, route.api, modelId);
+  const compat = api === "openai-completions"
     ? openAICompatibility(routeName, modelId, reasoning, upstream)
     : undefined;
   return {
     id: modelId,
     name: `${routeName}/${modelId}`,
-    api: route.api,
+    api,
     provider: "purroxy",
     baseUrl: `${BASE_URL}/${route.path}`,
     reasoning,
@@ -54,6 +55,13 @@ export function resolvePurroxyModel(value: string, lookup?: PurroxyModelLookup):
     maxTokens: upstream?.maxTokens ?? 16_384,
     ...(compat ? { compat } : {}),
   };
+}
+
+function apiForModel(routeName: string, routeApi: Api, modelId: string): Api {
+  if (routeName.startsWith("openai") && /(?:^|\/)gpt-5\.6-sol$/i.test(modelId)) {
+    return "openai-responses";
+  }
+  return routeApi;
 }
 
 function findUpstreamModel(

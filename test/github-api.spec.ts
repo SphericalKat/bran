@@ -2,9 +2,13 @@ import { describe, expect, it, vi } from "vitest";
 import { createGitHubApi } from "../src/reviewer/github-api";
 
 function response(body: unknown, init: ResponseInit = {}): Response {
+  const headers = new Headers(init.headers);
+  if (!headers.has("content-type")) {
+    headers.set("content-type", typeof body === "string" ? "text/plain" : "application/json");
+  }
   return new Response(
     typeof body === "string" ? body : JSON.stringify(body),
-    { status: 200, ...init },
+    { status: 200, ...init, headers },
   );
 }
 
@@ -24,8 +28,9 @@ describe("GitHub API", () => {
       "https://api.github.com/repos/octo/repo/pulls/42",
       expect.objectContaining({
         headers: expect.objectContaining({
-          Accept: "application/vnd.github+json",
-          Authorization: "Bearer secret",
+          accept: "application/vnd.github.v3+json",
+          authorization: "token secret",
+          "x-github-api-version": "2022-11-28",
         }),
       }),
     );
@@ -41,7 +46,7 @@ describe("GitHub API", () => {
     await expect(api.compareDiff("octo", "repo", "old/sha", "new-sha")).resolves.toBe("compare diff");
 
     expect(fetch.mock.calls[0]?.[1]?.headers).toEqual(expect.objectContaining({
-      Accept: "application/vnd.github.diff",
+      accept: "application/vnd.github.diff",
     }));
     expect(fetch.mock.calls[1]?.[0]).toBe(
       "https://api.github.com/repos/octo/repo/compare/old%2Fsha...new-sha",
@@ -52,14 +57,38 @@ describe("GitHub API", () => {
     const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(response({ id: 1 }));
     const api = createGitHubApi({ token: "user-token", fetch });
 
-    await api.submitPullRequestReview("octo", "repo", 42, "Looks good", "APPROVE");
+    await api.submitPullRequestReview("octo", "repo", 42, {
+      body: "Looks good",
+      event: "APPROVE",
+      commitId: "head-sha",
+      comments: [{
+        path: "src/index.ts",
+        body: "Handle this case",
+        line: 12,
+        side: "RIGHT",
+        startLine: 10,
+        startSide: "RIGHT",
+      }],
+    });
 
     expect(fetch).toHaveBeenCalledWith(
       "https://api.github.com/repos/octo/repo/pulls/42/reviews",
       expect.objectContaining({
         method: "POST",
-        headers: expect.objectContaining({ Authorization: "Bearer user-token" }),
-        body: JSON.stringify({ body: "Looks good", event: "APPROVE" }),
+        headers: expect.objectContaining({ authorization: "token user-token" }),
+        body: JSON.stringify({
+          body: "Looks good",
+          event: "APPROVE",
+          commit_id: "head-sha",
+          comments: [{
+            path: "src/index.ts",
+            body: "Handle this case",
+            line: 12,
+            side: "RIGHT",
+            start_line: 10,
+            start_side: "RIGHT",
+          }],
+        }),
       }),
     );
   });
@@ -93,7 +122,7 @@ describe("GitHub API", () => {
     await api.searchCode("octo", "repo", "ReviewAgent");
 
     expect(fetch.mock.calls[0]?.[0]).toBe(
-      "https://api.github.com/repos/octo/repo/contents/src/review%20agent.ts?ref=head%2Fsha",
+      "https://api.github.com/repos/octo/repo/contents/src%2Freview%20agent.ts?ref=head%2Fsha",
     );
     expect(fetch.mock.calls[1]?.[0]).toBe(
       "https://api.github.com/search/code?q=ReviewAgent%20repo%3Aocto%2Frepo&per_page=20",

@@ -1,7 +1,42 @@
-import { describe, expect, it } from "vitest";
+import { Type } from "@earendil-works/pi-ai";
+import { openAIResponsesApi } from "@earendil-works/pi-ai/api/openai-responses.lazy";
+import { describe, expect, it, vi } from "vitest";
 import { resolvePurroxyModel } from "../src/reviewer/purroxy";
 
 describe("Purroxy models", () => {
+  it("routes gpt-5.6-sol through Responses so tools retain reasoning", () => {
+    expect(resolvePurroxyModel("openai/gpt-5.6-sol")).toMatchObject({
+      api: "openai-responses",
+      reasoning: true,
+    });
+  });
+
+  it("sends function tools and reasoning effort to the Responses endpoint", async () => {
+    const model = resolvePurroxyModel("openai/gpt-5.6-sol");
+    let payload: unknown;
+    const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(new Response(
+      JSON.stringify({ error: { message: "stop after payload capture" } }),
+      { status: 400, headers: { "content-type": "application/json" } },
+    ));
+
+    await openAIResponsesApi().streamSimple(model, {
+      messages: [{ role: "user", content: "Review this", timestamp: 1 }],
+      tools: [{ name: "submit_review", description: "Submit", parameters: Type.Object({}) }],
+    }, {
+      apiKey: "test-key",
+      reasoning: "high",
+      fetch,
+      onPayload(value) { payload = value; },
+    }).result();
+
+    expect(fetch.mock.calls[0]?.[0]).toBe("https://main.purroxy.org/openai/responses");
+    expect(payload).toMatchObject({
+      reasoning: { effort: "high" },
+      tools: [{ name: "submit_review" }],
+    });
+    expect(payload).not.toHaveProperty("reasoning_effort");
+  });
+
   it("resolves an OpenAI-compatible route", () => {
     expect(resolvePurroxyModel("openai-priority/gpt-5.4-mini")).toMatchObject({
       id: "gpt-5.4-mini",
