@@ -14,7 +14,7 @@ export default {
   async fetch(request, env, _context): Promise<Response> {
     const url = new URL(request.url);
     if (request.method === "GET" && url.pathname === "/") {
-      return new Response("Fortagram is running", {
+      return new Response("Bran is running", {
         headers: { "Cache-Control": "no-store" },
       });
     }

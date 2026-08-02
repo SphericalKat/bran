@@ -53,7 +53,6 @@ export interface ReviewResult {
   metricsFooter: string | null;
   headSha: string;
   metrics: ReviewMetrics;
-  workspacePath: "/workspace";
   cacheMarker: null;
   reusedReview: false;
 }
@@ -236,7 +235,6 @@ export async function reviewPr(options: {
     metricsFooter: includeMetricsFooter ? formatMetricsMarkdown(metrics) : null,
     headSha,
     metrics,
-    workspacePath: "/workspace",
     cacheMarker: null,
     reusedReview: false,
   };

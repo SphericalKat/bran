@@ -32,7 +32,7 @@ describe("Telegram review failure", () => {
       token: "token",
       github: {} as GitHub,
       fetch: telegramFetch as typeof globalThis.fetch,
-      botInfo: { id: 1, is_bot: true, first_name: "Fortagram", username: "fortagram_bot" },
+      botInfo: { id: 1, is_bot: true, first_name: "Bran", username: "bran_bot" },
     });
 
     expect(response.status).toBe(200);
@@ -101,7 +101,7 @@ describe("Telegram review failure", () => {
       token: "token",
       github,
       fetch: telegramFetch as typeof globalThis.fetch,
-      botInfo: { id: 1, is_bot: true, first_name: "Fortagram", username: "fortagram_bot" },
+      botInfo: { id: 1, is_bot: true, first_name: "Bran", username: "bran_bot" },
     })).resolves.toMatchObject({ status: 200 });
     expect(edits).toBe(1);
   });

@@ -1,6 +1,6 @@
 # Worker reviewer
 
-Fortagram runs the Hodor review loop inside `ReviewerAgent`. It does not clone a repository or invoke `git`, `gh`, or a shell. The reviewer reads the pull request, diffs, prior reviews, and source files through GitHub's API using the connected user's OAuth or personal access token.
+Bran runs the Hodor review loop inside `ReviewerAgent`. It does not clone a repository or invoke `git`, `gh`, or a shell. The reviewer reads the pull request, diffs, prior reviews, and source files through GitHub's API using the connected user's OAuth or personal access token.
 
 ## Required bindings
 
@@ -15,10 +15,10 @@ OAuth is optional. Enable `/connect` with `GITHUB_OAUTH_CLIENT_ID`, `GITHUB_OAUT
 
 ## User flow
 
-1. In a private chat, use `/connect` for OAuth or `/token github_personal_access_token` to store a token directly. Fortagram deletes `/token` messages after reading them.
+1. In a private chat, use `/connect` for OAuth or `/token github_personal_access_token` to store a token directly. Bran deletes `/token` messages after reading them.
 2. Send `/review https://github.com/owner/repository/pull/123`.
-3. Fortagram edits one Telegram status message as the review moves through loading, analysis, repository inspection, and publishing.
-4. Fortagram posts the result as the connected GitHub user and tags the requester in the completed status message.
+3. Bran edits one Telegram status message as the review moves through loading, analysis, repository inspection, and publishing.
+4. Bran posts the result as the connected GitHub user and tags the requester in the completed status message.
 
 `/review` can be sent from a group. GitHub authorization still happens privately, and the review always uses the requester's stored connection.
 

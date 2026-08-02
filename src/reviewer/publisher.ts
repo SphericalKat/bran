@@ -13,12 +13,8 @@ import type {
 
 export function getFindingFingerprint(
   finding: ReviewFinding,
-  workspacePath?: string | null,
 ): string {
-  const path = relativizePath(
-    finding.code_location.absolute_file_path,
-    workspacePath ?? undefined,
-  );
+  const path = finding.code_location.path;
   const title = finding.title.replace(/^\[P[0-3]\]\s*/, "").trim().toLowerCase();
   return createHash("sha256").update(`${path}\n${title}`).digest("hex");
 }
@@ -92,7 +88,6 @@ export async function postReviewStructured(opts: {
   reviewStyle?: "summary" | "inline" | "hybrid";
   commitStatus?: boolean;
   headSha?: string | null;
-  workspacePath?: string | null;
   reconcileDiscussions?: boolean;
   cacheMarker?: string | null;
   skipSummary?: boolean;
@@ -127,11 +122,10 @@ export async function postReviewStructured(opts: {
   try {
     const api = githubApi ?? createGitHubApi({ token: githubToken ?? "" });
     const diff = await api.getPullRequestDiff(parsed.owner, parsed.repo, parsed.prNumber);
-    const workspacePath = opts.workspacePath ?? "/workspace";
-    const inline = buildInlineComments(review, diff, workspacePath);
+    const inline = buildInlineComments(review, diff);
     let body = renderSummaryMarkdown(review);
     if (inline.skipped.length > 0) {
-      body += renderUnplacedFindings(inline.skipped, workspacePath);
+      body += renderUnplacedFindings(inline.skipped);
     }
     if (headSha) body = `<!-- hodor:sha:${headSha} -->\n${body}`;
     if (cacheMarker) body = body.replace("\n", `\n${cacheMarker}\n`);
@@ -158,28 +152,15 @@ export async function postReviewStructured(opts: {
   }
 }
 
-function renderUnplacedFindings(
-  findings: ReviewFinding[],
-  workspacePath?: string | null,
-): string {
+function renderUnplacedFindings(findings: ReviewFinding[]): string {
   const lines = ["", "### Findings without an inline location", ""];
   for (const finding of findings) {
     const location = finding.code_location;
-    const path = relativizePath(location.absolute_file_path, workspacePath ?? undefined);
     const range = location.line_range.start === location.line_range.end
       ? String(location.line_range.start)
       : `${location.line_range.start}-${location.line_range.end}`;
-    lines.push(`- **${finding.title}** (\`${path}:${range}\`)`);
+    lines.push(`- **${finding.title}** (\`${location.path}:${range}\`)`);
     lines.push(`  - ${finding.body}`);
   }
   return lines.join("\n");
-}
-
-function relativizePath(path: string, workspacePath?: string): string {
-  const normalized = path.replaceAll("\\", "/");
-  if (!workspacePath) return normalized.replace(/^\/+/, "");
-  const workspace = workspacePath.replaceAll("\\", "/").replace(/\/+$/, "");
-  return normalized.startsWith(`${workspace}/`)
-    ? normalized.slice(workspace.length + 1)
-    : normalized.replace(/^\/+/, "");
 }
