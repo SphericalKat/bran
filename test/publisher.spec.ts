@@ -41,7 +41,6 @@ describe("structured review publishing", () => {
       review,
       githubApi,
       headSha: "head-sha",
-      workspacePath: "/workspace",
     })).resolves.toMatchObject({
       success: true,
       inlineCreated: 1,

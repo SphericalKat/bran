@@ -127,10 +127,11 @@ export async function postReviewStructured(opts: {
   try {
     const api = githubApi ?? createGitHubApi({ token: githubToken ?? "" });
     const diff = await api.getPullRequestDiff(parsed.owner, parsed.repo, parsed.prNumber);
-    const inline = buildInlineComments(review, diff, opts.workspacePath);
+    const workspacePath = opts.workspacePath ?? "/workspace";
+    const inline = buildInlineComments(review, diff, workspacePath);
     let body = renderSummaryMarkdown(review);
     if (inline.skipped.length > 0) {
-      body += renderUnplacedFindings(inline.skipped, opts.workspacePath);
+      body += renderUnplacedFindings(inline.skipped, workspacePath);
     }
     if (headSha) body = `<!-- hodor:sha:${headSha} -->\n${body}`;
     if (cacheMarker) body = body.replace("\n", `\n${cacheMarker}\n`);
