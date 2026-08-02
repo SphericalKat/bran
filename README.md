@@ -61,8 +61,8 @@ For each review, Bran:
 ### 1. Install the project
 
 ```bash
-git clone https://github.com/SphericalKat/fortagram.git
-cd fortagram
+git clone https://github.com/SphericalKat/bran.git
+cd bran
 corepack enable
 pnpm install --frozen-lockfile
 ```
@@ -94,11 +94,11 @@ Edit the `vars` section of `wrangler.jsonc`:
 "vars": {
   "GITHUB_OAUTH_CLIENT_ID": "your-github-oauth-client-id",
   "GITHUB_CALLBACK_URL": "https://<worker>.<subdomain>.workers.dev/auth/github/callback",
-  "REVIEW_MODEL": "purroxy/openai/gpt-5.6-sol"
+  "REVIEW_MODEL": "openai/<model>"
 }
 ```
 
-`REVIEW_MODEL` accepts a provider-qualified model name. Examples include `openai/<model>`, `anthropic/<model>`, and `purroxy/<route>/<model>`. The default configuration uses the Purroxy `openai` route. `LLM_API_KEY` must be valid for the selected provider or proxy.
+`REVIEW_MODEL` accepts a provider-qualified model name. Examples include `openai/<model>` and `anthropic/<model>`. `LLM_API_KEY` must be valid for the selected provider.
 
 ### 5. Add production secrets
 
