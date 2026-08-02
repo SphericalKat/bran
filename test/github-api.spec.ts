@@ -160,19 +160,24 @@ describe("GitHub API", () => {
     );
   });
 
-  it("reports GitHub failures without exposing the token or response body", async () => {
+  it("includes GitHub validation details without exposing the token", async () => {
     const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(response(
-      { message: "token secret" },
       {
-        status: 403,
-        statusText: "Forbidden",
+        message: "Validation Failed for token secret",
+        errors: ["Pull request authors cannot approve their own pull request"],
+      },
+      {
+        status: 422,
+        statusText: "Unprocessable Entity",
         headers: { "x-github-request-id": "request-123" },
       },
     ));
     const api = createGitHubApi({ token: "secret", fetch });
 
     await expect(api.getPullRequest("octo", "repo", 42)).rejects.toThrow(
-      "GitHub API request failed for GET /repos/octo/repo/pulls/42 (403 Forbidden) [request request-123]",
+      "GitHub API request failed for GET /repos/octo/repo/pulls/42 (422 Unprocessable Entity): "
+      + "Validation Failed for token [REDACTED] — Pull request authors cannot approve their own pull request "
+      + "[request request-123]",
     );
   });
 

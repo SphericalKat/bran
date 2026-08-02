@@ -105,7 +105,7 @@ export function createGitHubApi(options: {
     try {
       return await request();
     } catch (error) {
-      throw readableGitHubError(error);
+      throw readableGitHubError(error, options.token);
     }
   };
 
@@ -204,7 +204,7 @@ function toGitHubComment(comment: {
   };
 }
 
-function readableGitHubError(error: unknown): Error {
+function readableGitHubError(error: unknown, token: string): Error {
   if (!isOctokitRequestError(error)) {
     return error instanceof Error ? error : new Error(String(error));
   }
@@ -212,17 +212,39 @@ function readableGitHubError(error: unknown): Error {
   const path = `${requestUrl.pathname}${requestUrl.search}`;
   const requestId = error.response?.headers["x-github-request-id"];
   const status = `${error.status}${statusText(error.status) ? ` ${statusText(error.status)}` : ""}`;
+  const details = githubErrorDetails(error.response?.data, token);
   return new Error(
-    `GitHub API request failed for ${error.request.method} ${path} (${status})${
+    `GitHub API request failed for ${error.request.method} ${path} (${status})${details ? `: ${details}` : ""}${
       requestId ? ` [request ${requestId}]` : ""
     }`,
   );
 }
 
+function githubErrorDetails(data: unknown, token: string): string | null {
+  if (!data || typeof data !== "object") return null;
+  const response = data as Record<string, unknown>;
+  const details: string[] = [];
+  if (typeof response.message === "string") details.push(response.message);
+  if (Array.isArray(response.errors)) {
+    for (const error of response.errors) {
+      if (typeof error === "string") {
+        details.push(error);
+      } else if (error && typeof error === "object") {
+        const message = (error as Record<string, unknown>).message;
+        if (typeof message === "string") details.push(message);
+      }
+    }
+  }
+  const sanitized = [...new Set(details.map((detail) =>
+    detail.replaceAll(token, "[REDACTED]").replace(/\s+/g, " ").trim()
+  ).filter(Boolean))].join(" — ");
+  return sanitized ? sanitized.slice(0, 1_000) : null;
+}
+
 function isOctokitRequestError(error: unknown): error is {
   status: number;
   request: { method: string; url: string };
-  response?: { headers: Record<string, string> };
+  response?: { headers: Record<string, string>; data?: unknown };
 } {
   if (!error || typeof error !== "object") return false;
   const value = error as Record<string, unknown>;
