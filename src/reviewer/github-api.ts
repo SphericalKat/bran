@@ -92,7 +92,7 @@ export function createGitHubApi(options: {
   const octokit = new Octokit({
     auth: options.token,
     baseUrl: (options.apiUrl ?? DEFAULT_GITHUB_API_URL).replace(/\/$/, ""),
-    userAgent: "fortagram",
+    userAgent: "bran",
     request: {
       fetch: options.fetch ?? globalThis.fetch,
     },

@@ -27,7 +27,7 @@ describe("structured review publishing", () => {
         body: "Untrusted input reaches the unsafe call.",
         priority: 1,
         code_location: {
-          absolute_file_path: "/workspace/src/example.ts",
+          path: "src/example.ts",
           line_range: { start: 9, end: 10 },
         },
         suggestion: "safeCall();",
@@ -41,7 +41,6 @@ describe("structured review publishing", () => {
       review,
       githubApi,
       headSha: "head-sha",
-      workspacePath: "/workspace",
     })).resolves.toMatchObject({
       success: true,
       inlineCreated: 1,
@@ -83,7 +82,7 @@ describe("structured review publishing", () => {
         body: "This location is not in the diff.",
         priority: 2,
         code_location: {
-          absolute_file_path: "/workspace/src/other.ts",
+          path: "src/other.ts",
           line_range: { start: 5, end: 5 },
         },
       }],
@@ -95,7 +94,6 @@ describe("structured review publishing", () => {
       prUrl: "https://github.com/octo/repo/pull/42",
       review,
       githubApi,
-      workspacePath: "/workspace",
     })).resolves.toMatchObject({ inlineCreated: 0, inlineFailed: 1 });
     expect(submitted?.comments).toBeUndefined();
     expect(submitted?.event).toBe("REQUEST_CHANGES");

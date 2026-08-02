@@ -162,7 +162,7 @@ export async function fetchCurrentUser(
     headers: {
       Accept: "application/vnd.github+json",
       Authorization: `Bearer ${accessToken}`,
-      "User-Agent": "fortagram",
+      "User-Agent": "bran",
       "X-GitHub-Api-Version": GITHUB_API_VERSION,
     },
   });

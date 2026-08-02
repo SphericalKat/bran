@@ -9,6 +9,8 @@ describe("review system prompt", () => {
     expect(prompt).toContain("ASD-STE100 Simplified Technical English");
     expect(prompt).toContain("maximum 20 words per sentence");
     expect(prompt).toContain("<HODOR_REVIEW_PROTOCOL>");
+    expect(prompt).toContain("repository-relative file path with no leading slash");
+    expect(prompt).not.toContain("/workspace");
     expect(prompt).toContain("Call submit_review exactly once");
   });
 });

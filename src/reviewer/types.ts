@@ -64,11 +64,9 @@ export interface ReviewFinding {
   body: string;
   priority: ReviewPriority;
   code_location: {
-    absolute_file_path: string;
+    path: string;
     line_range: { start: number; end: number };
   };
-  /** Verbatim copy of the source lines the finding refers to, used to resolve
-   * line_range against the on-disk file. Optional; falls back to line_range. */
   existing_code?: string;
   suggestion?: string;
 }

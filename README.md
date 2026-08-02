@@ -1,6 +1,6 @@
-# Fortagram
+# Bran
 
-Fortagram is a Telegram bot that reviews GitHub pull requests with an AI coding agent and publishes the result as a native GitHub review. It runs on Cloudflare Workers, stores each Telegram user's GitHub authorization in a SQLite-backed Durable Object, and keeps long-running reviews alive in a separate Durable Object.
+Bran is a Telegram bot that reviews GitHub pull requests with an AI coding agent and publishes the result as a native GitHub review. It runs on Cloudflare Workers, stores each Telegram user's GitHub authorization in a SQLite-backed Durable Object, and keeps long-running reviews alive in a separate Durable Object.
 
 ## Features
 
@@ -10,16 +10,16 @@ Fortagram is a Telegram bot that reviews GitHub pull requests with an AI coding 
 - Inspect the pull-request diff and fetch related repository context as needed
 - Publish a GitHub review with a summary, inline findings, and suggested changes
 - Approve, comment on, or request changes on a pull request directly from Telegram
-- Review only changes made since Fortagram's previous review when possible
+- Review only changes made since Bran's previous review when possible
 
-Fortagram currently supports GitHub pull requests only.
+Bran currently supports GitHub pull requests only.
 
 ## How it works
 
 ```mermaid
 sequenceDiagram
     participant User as Telegram user
-    participant Bot as Fortagram Worker
+    participant Bot as Bran Worker
     participant Auth as GitHubAuthStore
     participant Agent as ReviewerAgent
     participant GitHub
@@ -38,10 +38,10 @@ sequenceDiagram
 
 The Worker receives Telegram webhook requests at its root URL. Account credentials and short-lived OAuth nonces are stored per Telegram user in `GitHubAuthStore`. A `ReviewerAgent` instance serializes reviews for each user, records progress, and keeps the request alive while the coding agent runs.
 
-For each review, Fortagram:
+For each review, Bran:
 
 1. Loads the pull request, existing comments and reviews, and the current diff through the GitHub API.
-2. Looks for a Fortagram review marker from an earlier run. If one exists and the commits are comparable, it reviews only the newer changes; otherwise it reviews the full pull request.
+2. Looks for a Bran review marker from an earlier run. If one exists and the commits are comparable, it reviews only the newer changes; otherwise it reviews the full pull request.
 3. Excludes generated dependency lockfiles, Markdown files, and test-data directories from the embedded diff.
 4. Gives the model bounded tools to read source files, search the repository, inspect a file's diff, and return a structured review.
 5. Converts findings on changed lines into GitHub inline comments. Findings that cannot be placed inline remain in the summary.
@@ -82,7 +82,7 @@ In GitHub, create an OAuth app with these values:
 | Homepage URL | Your deployed Worker's URL |
 | Authorization callback URL | `https://<worker>.<subdomain>.workers.dev/auth/github/callback` |
 
-Save the client ID and generate a client secret. Fortagram requests the `repo` OAuth scope so it can read and review both public and private repositories available to the user.
+Save the client ID and generate a client secret. Bran requests the `repo` OAuth scope so it can read and review both public and private repositories available to the user.
 
 The `GITHUB_OAUTH_CLIENT_ID` and `GITHUB_CALLBACK_URL` currently present in `wrangler.jsonc` belong to the original deployment. Replace both before deploying a fork. The callback URL in `wrangler.jsonc` must exactly match the callback configured in the GitHub OAuth app.
 
@@ -147,25 +147,25 @@ Wrangler creates the two SQLite-backed Durable Object classes declared in `wrang
 curl https://<worker>.<subdomain>.workers.dev/
 ```
 
-The response should be `Fortagram is running`.
+The response must be `Bran is running`.
 
 ### 7. Register the Telegram webhook
 
 Point Telegram at the deployed Worker:
 
 ```bash
-read -rs "Telegram bot token: " FORTAGRAM_TELEGRAM_TOKEN
+read -rs "Telegram bot token: " BRAN_TELEGRAM_TOKEN
 echo
 curl --request POST \
-  "https://api.telegram.org/bot${FORTAGRAM_TELEGRAM_TOKEN}/setWebhook" \
+  "https://api.telegram.org/bot${BRAN_TELEGRAM_TOKEN}/setWebhook" \
   --data-urlencode "url=https://<worker>.<subdomain>.workers.dev/"
 ```
 
 Confirm the registration:
 
 ```bash
-curl "https://api.telegram.org/bot${FORTAGRAM_TELEGRAM_TOKEN}/getWebhookInfo"
-unset FORTAGRAM_TELEGRAM_TOKEN
+curl "https://api.telegram.org/bot${BRAN_TELEGRAM_TOKEN}/getWebhookInfo"
+unset BRAN_TELEGRAM_TOKEN
 ```
 
 The silent prompt keeps the real bot token out of project files and shell history.
@@ -203,7 +203,7 @@ Authentication and manual GitHub actions must be run in a private chat with the 
 | --- | --- |
 | `/start` | Show the initial usage message |
 | `/connect` or `/login` | Start the GitHub OAuth flow |
-| `/token <personal-access-token>` | Connect with a GitHub token; Fortagram attempts to delete the message immediately |
+| `/token <personal-access-token>` | Connect with a GitHub token; Bran attempts to delete the message immediately |
 | `/status` | Show the connected GitHub account |
 | `/disconnect` or `/logout` | Remove the stored GitHub credentials |
 | `/review <pull-request-url>` | Generate and publish an AI review |
@@ -211,7 +211,7 @@ Authentication and manual GitHub actions must be run in a private chat with the 
 | `/approve <pull-request-url> <message>` | Approve a pull request with a message |
 | `/requestchanges <pull-request-url> <message>` | Request changes with a message |
 
-The OAuth flow grants the broad `repo` scope. For `/token`, use a token with access only to the repositories Fortagram needs and permission to read pull requests, read repository contents, and write pull-request reviews.
+The OAuth flow grants the broad `repo` scope. For `/token`, use a token with access only to the repositories Bran needs and permission to read pull requests, read repository contents, and write pull-request reviews.
 
 ## Development commands
 
@@ -254,9 +254,9 @@ wrangler.jsonc   Cloudflare Worker and Durable Object configuration
 - **Telegram does not respond:** Check `getWebhookInfo`, verify the Worker URL is HTTPS, and inspect Cloudflare Worker logs with `pnpm exec wrangler tail`.
 - **GitHub rejects a review:** Confirm the connected user can access the repository and that the OAuth app or token has permission to write pull-request reviews.
 - **The model request fails:** Check `REVIEW_MODEL`, confirm `LLM_API_KEY` belongs to that provider or proxy, and inspect the Worker logs.
-- **A review is already running:** Fortagram permits one active automated review per Telegram user. Wait for the current review to finish before starting another.
-- **An inline finding appears only in the summary:** GitHub permits inline comments only on lines represented by the pull-request diff. Fortagram keeps unplaceable findings in the review summary.
+- **A review is already running:** Bran permits one active automated review per Telegram user. Wait for the current review to finish before starting another.
+- **An inline finding appears only in the summary:** GitHub permits inline comments only on lines represented by the pull-request diff. Bran keeps unplaceable findings in the review summary.
 
 ## License
 
-Fortagram is available under the [MIT License](LICENSE).
+Bran is available under the [MIT License](LICENSE).

@@ -122,26 +122,9 @@ function formatFinding(f: ReviewFinding): string {
 }
 
 function formatLocation(loc: {
-  absolute_file_path: string;
+  path: string;
   line_range: { start: number; end: number };
 }): string {
-  // Strip common workspace prefixes to get a clean relative path
-  let filePath = loc.absolute_file_path;
-
-  // GitLab CI: /builds/owner/repo/src/file.ts → src/file.ts
-  const buildsMatch = filePath.match(/\/builds\/[^/]+\/[^/]+\/(.+)/);
-  if (buildsMatch) {
-    filePath = buildsMatch[1];
-  }
-  // GitHub Actions / generic workspace
-  else if (filePath.includes("/workspace/")) {
-    filePath = filePath.slice(filePath.indexOf("/workspace/") + "/workspace/".length);
-  }
-  // Temp review dirs: /tmp/hodor-review-<id>/src/file.ts → src/file.ts
-  else {
-    filePath = filePath.replace(/^.*\/hodor-review-[^/]+\//, "");
-  }
-
   const { start, end } = loc.line_range;
-  return start === end ? `${filePath}:${start}` : `${filePath}:${start}-${end}`;
+  return start === end ? `${loc.path}:${start}` : `${loc.path}:${start}-${end}`;
 }

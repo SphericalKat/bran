@@ -204,7 +204,6 @@ describe("GitHub", () => {
         durationSeconds: 2,
         reused: false,
       },
-      workspacePath: "/workspace",
       cacheMarker: null,
       reusedReview: false,
     };
