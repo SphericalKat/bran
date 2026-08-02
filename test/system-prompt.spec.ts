@@ -9,6 +9,10 @@ describe("review system prompt", () => {
     expect(prompt).toContain("ASD-STE100 Simplified Technical English");
     expect(prompt).toContain("maximum 20 words per sentence");
     expect(prompt).toContain("<HODOR_REVIEW_PROTOCOL>");
+    expect(prompt).toContain("Describe the affected product behavior before implementation details");
+    expect(prompt).toContain("Do not use ambiguous terms, unexplained domain terms, or jargon");
+    expect(prompt).toContain("Name each actor by what it does");
+    expect(prompt).toContain("Explain what stored state records instead of calling it a marker or flag");
     expect(prompt).toContain("repository-relative file path with no leading slash");
     expect(prompt).not.toContain("/workspace");
     expect(prompt).toContain("Call submit_review exactly once");
