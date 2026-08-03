@@ -81,7 +81,6 @@ export class ReviewerAgent extends Agent<AppEnv, ReviewerAgentState> {
           model: input.model ?? this.env.REVIEW_MODEL,
           reasoningEffort: input.reasoningEffort,
           full: input.full,
-          includeMetricsFooter: true,
           onEvent: (event) => this.recordProgress(event, reportProgress),
         });
         this.setState({ ...this.state, phase: "Posting review to GitHub" });
@@ -91,8 +90,6 @@ export class ReviewerAgent extends Agent<AppEnv, ReviewerAgentState> {
           prUrl: input.prUrl,
           review: generated.review,
           githubToken: input.githubToken,
-          model: generated.model,
-          metricsFooter: generated.metricsFooter,
           headSha: generated.headSha,
         });
         if (!published.success) {

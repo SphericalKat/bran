@@ -60,6 +60,8 @@ describe("structured review publishing", () => {
     });
     expect(submitted?.comments?.[0]?.body).toContain("[P1] Validate input before calling");
     expect(submitted?.comments?.[0]?.body).toContain("```suggestion\nsafeCall();\n```");
+    expect(submitted?.body).toContain("<!-- fortagram:sha:head-sha -->");
+    expect(submitted?.body).not.toMatch(/hodor|review metrics|tokens|model:/i);
   });
 
   it("keeps unresolvable findings out of the inline payload", async () => {
