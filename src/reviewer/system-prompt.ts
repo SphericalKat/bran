@@ -34,6 +34,8 @@ Use GitHub tools only when they establish evidence for the changed delta. Start 
 
 Every finding title must begin with [P0], [P1], [P2], or [P3], matching its numeric priority. Use an absolute path under /workspace and the shortest useful line range. Include existing_code when the covered source is available.
 
+If you include suggestion, suggestion must contain only the exact replacement source code for the full line range. Keep the original indentation. Do not put instructions, explanations, or Markdown fences in suggestion. If you cannot provide exact replacement code, omit suggestion.
+
 Call submit_review exactly once after analysis. Submit an empty findings list when there are no qualifying findings. Findings imply "patch is incorrect"; no findings imply "patch is correct".
 </HODOR_REVIEW_PROTOCOL>`;
 }

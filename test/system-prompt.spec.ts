@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { SUBMIT_REVIEW_SCHEMA } from "../src/reviewer/review";
 import { buildReviewSystemPrompt } from "../src/reviewer/system-prompt";
 
 describe("review system prompt", () => {
@@ -10,5 +11,16 @@ describe("review system prompt", () => {
     expect(prompt).toContain("maximum 20 words per sentence");
     expect(prompt).toContain("<HODOR_REVIEW_PROTOCOL>");
     expect(prompt).toContain("Call submit_review exactly once");
+  });
+
+  it("requires suggestions to contain exact replacement code", () => {
+    const prompt = buildReviewSystemPrompt({ reviewInstructions: "Find concrete bugs." });
+
+    expect(prompt).toContain("suggestion must contain only the exact replacement source code");
+    expect(prompt).toContain("Do not put instructions, explanations, or Markdown fences in suggestion");
+    expect(prompt).toContain("omit suggestion");
+    expect(JSON.stringify(SUBMIT_REVIEW_SCHEMA)).toContain(
+      "Exact replacement source code for the full line range",
+    );
   });
 });

@@ -15,7 +15,10 @@ const FINDING_SCHEMA = Type.Object({
   priority: Type.Integer({ minimum: 0, maximum: 3 }),
   code_location: LOCATION_SCHEMA,
   existing_code: Type.Optional(Type.String({ minLength: 1 })),
-  suggestion: Type.Optional(Type.String({ minLength: 1 })),
+  suggestion: Type.Optional(Type.String({
+    minLength: 1,
+    description: "Exact replacement source code for the full line range. No instructions, explanations, or Markdown fences.",
+  })),
 }, { additionalProperties: false });
 
 export const SUBMIT_REVIEW_SCHEMA = Type.Object({
