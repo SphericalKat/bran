@@ -190,7 +190,6 @@ describe("GitHub", () => {
         overall_explanation: "No blocking problems found.",
       },
       model: "anthropic/test-model",
-      metricsFooter: "metrics",
       headSha: "head-sha",
       metrics: {
         inputTokens: 10,

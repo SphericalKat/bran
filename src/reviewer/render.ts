@@ -4,13 +4,11 @@
 
 import type { ReviewFinding, ReviewOutput } from "./types";
 
-export const HODOR_REVIEW_MARKER = "<!-- hodor-review -->";
-
 /**
  * Render a ReviewOutput into clean markdown for posting as a PR/MR comment.
  */
 export function renderMarkdown(review: ReviewOutput): string {
-  const lines: string[] = [HODOR_REVIEW_MARKER];
+  const lines: string[] = [];
 
   // Group findings by priority
   const critical: ReviewFinding[] = []; // P0, P1
@@ -78,7 +76,7 @@ export function renderMarkdown(review: ReviewOutput): string {
 }
 
 export function renderSummaryMarkdown(review: ReviewOutput): string {
-  const lines: string[] = [HODOR_REVIEW_MARKER];
+  const lines: string[] = [];
 
   const counts = { critical: 0, important: 0, minor: 0 };
   for (const f of review.findings) {
@@ -87,7 +85,6 @@ export function renderSummaryMarkdown(review: ReviewOutput): string {
     else counts.minor++;
   }
 
-  lines.push("");
   lines.push("| Category | Count |");
   lines.push("| --- | ---: |");
   lines.push(`| Critical (P0/P1) | ${counts.critical} |`);
