@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { SUBMIT_REVIEW_SCHEMA } from "../src/reviewer/review";
 import { buildReviewSystemPrompt } from "../src/reviewer/system-prompt";
 
 describe("review system prompt", () => {
@@ -16,5 +17,16 @@ describe("review system prompt", () => {
     expect(prompt).toContain("repository-relative file path with no leading slash");
     expect(prompt).not.toContain("/workspace");
     expect(prompt).toContain("Call submit_review exactly once");
+  });
+
+  it("requires suggestions to contain exact replacement code", () => {
+    const prompt = buildReviewSystemPrompt({ reviewInstructions: "Find concrete bugs." });
+
+    expect(prompt).toContain("suggestion must contain only the exact replacement source code");
+    expect(prompt).toContain("Do not put instructions, explanations, or Markdown fences in suggestion");
+    expect(prompt).toContain("omit suggestion");
+    expect(JSON.stringify(SUBMIT_REVIEW_SCHEMA)).toContain(
+      "Exact replacement source code for the full line range",
+    );
   });
 });
