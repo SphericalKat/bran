@@ -1,6 +1,18 @@
 import type { Api, Model, OpenAICompletionsCompat } from "@earendil-works/pi-ai";
 
 const BASE_URL = "https://main.purroxy.org";
+const GENERIC_METADATA_PROVIDERS = [
+  "openai",
+  "google",
+  "anthropic",
+  "moonshotai",
+  "qwen-token-plan",
+  "zai",
+  "deepseek",
+  "minimax",
+] as const;
+
+type PurroxyRoute = { path: string; api: Api; metadataProviders: readonly string[] };
 
 const routes = {
   openai: { path: "openai", api: "openai-completions", metadataProviders: ["openai"] },
@@ -8,6 +20,7 @@ const routes = {
   "openai-flex": { path: "openai/flex", api: "openai-completions", metadataProviders: ["openai"] },
   vertex: { path: "google/vertex", api: "google-generative-ai", metadataProviders: ["google"] },
   "vertex-priority": { path: "google/vertex/priority", api: "google-generative-ai", metadataProviders: ["google"] },
+  kimi: { path: "kimi", api: "openai-completions", metadataProviders: ["moonshotai"] },
   glm: { path: "glm", api: "openai-completions", metadataProviders: ["zai"] },
   "glm-anthropic": { path: "glm/anthropic", api: "anthropic-messages", metadataProviders: ["zai"] },
   alibaba: {
@@ -20,7 +33,7 @@ const routes = {
     api: "anthropic-messages",
     metadataProviders: ["qwen-token-plan", "moonshotai", "minimax", "zai", "deepseek"],
   },
-} as const satisfies Record<string, { path: string; api: Api; metadataProviders: readonly string[] }>;
+} as const satisfies Record<string, PurroxyRoute>;
 
 export type PurroxyModelLookup = (provider: string, modelId: string) => Model<Api> | undefined;
 
@@ -31,11 +44,18 @@ export function resolvePurroxyModel(value: string, lookup?: PurroxyModelLookup):
   }
 
   const routeName = value.slice(0, separator);
-  const route = routes[routeName as keyof typeof routes];
-  if (!route) throw new Error(`Unknown Purroxy route: ${routeName}`);
+  if (!/^[a-z0-9][a-z0-9-]*$/.test(routeName)) {
+    throw new Error(`Invalid Purroxy route: ${routeName}`);
+  }
+  const route: PurroxyRoute = routes[routeName as keyof typeof routes] ?? {
+    path: routeName,
+    api: "openai-completions",
+    metadataProviders: GENERIC_METADATA_PROVIDERS,
+  };
 
   const modelId = value.slice(separator + 1);
   const upstream = findUpstreamModel(route.metadataProviders, modelId, lookup);
+  const fallbackLimits = inferFallbackLimits(modelId);
   const reasoning = upstream?.reasoning ?? inferReasoning(routeName, modelId);
   const api = apiForModel(routeName, route.api, modelId);
   const compat = api === "openai-completions"
@@ -51,8 +71,8 @@ export function resolvePurroxyModel(value: string, lookup?: PurroxyModelLookup):
     thinkingLevelMap: upstream?.thinkingLevelMap,
     input: ["text"],
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-    contextWindow: upstream?.contextWindow ?? 128_000,
-    maxTokens: upstream?.maxTokens ?? 16_384,
+    contextWindow: upstream?.contextWindow ?? fallbackLimits.contextWindow,
+    maxTokens: upstream?.maxTokens ?? fallbackLimits.maxTokens,
     ...(compat ? { compat } : {}),
   };
 }
@@ -80,6 +100,13 @@ function findUpstreamModel(
   return undefined;
 }
 
+function inferFallbackLimits(modelId: string): { contextWindow: number; maxTokens: number } {
+  if (/^(?:qwen3\.8-max|kimi\/kimi-k3|kimi-k3)$/i.test(modelId)) {
+    return { contextWindow: 1_048_576, maxTokens: 131_072 };
+  }
+  return { contextWindow: 128_000, maxTokens: 16_384 };
+}
+
 function inferReasoning(routeName: string, modelId: string): boolean {
   const id = modelId.toLowerCase();
   if (routeName.startsWith("openai")) return /^(?:o[134](?:-|$)|gpt-5(?:[.-]|$))/.test(id);
@@ -87,7 +114,8 @@ function inferReasoning(routeName: string, modelId: string): boolean {
     return /^(?:gemini-(?:2\.5|[3-9])|gemma-[4-9])/.test(id) && !/(?:embedding|lyria)/.test(id);
   }
   if (routeName.startsWith("glm")) return /^glm-(?:4\.[5-9]|[5-9])/.test(id) && !/(?:image|vision|ocr)/.test(id);
-  return /(?:^|\/)(?:qwen3|qwq|deepseek-r1|glm-[5-9])|(?:thinking|reasoning)/.test(id);
+  if (routeName === "kimi") return /^kimi-k[3-9]/.test(id) || /(?:thinking|reasoning)/.test(id);
+  return /(?:^|\/)(?:qwen3|qwq|deepseek-r1|glm-[5-9]|kimi-k[3-9])|(?:thinking|reasoning)/.test(id);
 }
 
 function openAICompatibility(
@@ -111,7 +139,25 @@ function openAICompatibility(
   if (routeName === "glm") return { supportsReasoningEffort: true, thinkingFormat: "zai" };
 
   const id = modelId.toLowerCase();
-  if (/(?:^|\/)(?:qwen|qwq)/.test(id)) return { supportsReasoningEffort: false, thinkingFormat: "qwen" };
+  if (/(?:^|\/)kimi-k[3-9](?:$|[-.])/.test(id)) {
+    return {
+      supportsStore: false,
+      supportsDeveloperRole: false,
+      supportsReasoningEffort: true,
+      maxTokensField: "max_tokens",
+      supportsStrictMode: false,
+      thinkingFormat: "openai",
+      requiresReasoningContentOnAssistantMessages: true,
+      deferredToolsMode: "kimi",
+    };
+  }
+  if (/(?:^|\/)(?:qwen|qwq)/.test(id)) {
+    return {
+      supportsDeveloperRole: false,
+      supportsReasoningEffort: false,
+      thinkingFormat: "qwen",
+    };
+  }
   if (/(?:^|\/)(?:glm|zhipu)/.test(id)) return { supportsReasoningEffort: true, thinkingFormat: "zai" };
   if (/(?:deepseek|kimi).*(?:r1|thinking|reasoning)/.test(id)) {
     return { supportsReasoningEffort: false, thinkingFormat: "deepseek" };

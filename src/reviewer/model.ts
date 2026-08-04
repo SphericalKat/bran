@@ -4,15 +4,34 @@ import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import type { DiffStats, ReviewDiffMode } from "./review-diff";
 import { resolvePurroxyModel } from "./purroxy";
 
+export function resolveReviewModelList(options: {
+  models?: string[];
+  model?: string;
+  configuredModels?: string;
+  fallbackModel?: string;
+}): string[] {
+  const requested = options.models?.length
+    ? options.models
+    : options.model
+      ? [options.model]
+      : options.configuredModels?.split(",") ?? (options.fallbackModel ? [options.fallbackModel] : []);
+  return [...new Set(requested.map((model) => model.trim()).filter(Boolean))];
+}
+
 export function parseModelString(value: string): { provider: string; modelId: string } {
   const model = value.trim();
   if (!model) throw new Error("Model name must be provided");
   const slash = model.indexOf("/");
   if (slash > 0) {
     const rawProvider = model.slice(0, slash).toLowerCase();
+    const modelId = model.slice(slash + 1).replace(/^converse\//, "");
+    const purroxyRoute = rawProvider.match(/^purroxy-([a-z0-9][a-z0-9-]*)$/)?.[1];
+    if (purroxyRoute) {
+      return { provider: "purroxy", modelId: `${purroxyRoute}/${modelId}` };
+    }
     return {
       provider: rawProvider === "bedrock" ? "amazon-bedrock" : rawProvider,
-      modelId: model.slice(slash + 1).replace(/^converse\//, ""),
+      modelId,
     };
   }
   if (/^(gpt|o[134])|openai/i.test(model)) return { provider: "openai", modelId: model };

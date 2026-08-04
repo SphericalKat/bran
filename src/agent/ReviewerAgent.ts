@@ -1,6 +1,7 @@
 import { Agent } from "agents";
 import type { AppEnv } from "../env";
 import type { AgentProgressEvent, ReviewResult } from "../reviewer/agent";
+import { resolveReviewModelList } from "../reviewer/model";
 import { postReviewStructured } from "../reviewer/publisher";
 import {
   TelegramReviewProgress,
@@ -20,6 +21,8 @@ export interface RunCodeReviewInput {
   prUrl: string;
   githubToken: string;
   model?: string;
+  models?: string[];
+  orchestratorModel?: string;
   reasoningEffort?: string;
   full?: boolean;
   githubLogin: string;
@@ -86,11 +89,21 @@ export class ReviewerAgent extends Agent<AppEnv, ReviewerAgentState> {
     try {
       const { reviewPr } = await import("../reviewer/agent");
       const result = await this.keepAliveWhile(async () => {
+        const configuredModels = resolveReviewModelList({
+          models: input.models,
+          model: input.model,
+          configuredModels: this.env.REVIEW_MODELS,
+          fallbackModel: this.env.REVIEW_MODEL,
+        });
         const generated = await reviewPr({
           prUrl: input.prUrl,
           githubToken: input.githubToken,
           llmApiKey: this.env.LLM_API_KEY,
-          model: input.model ?? this.env.REVIEW_MODEL,
+          model: configuredModels[0],
+          models: configuredModels,
+          orchestratorModel: input.orchestratorModel ?? this.env.REVIEW_ORCHESTRATOR_MODEL,
+          maxConcurrency: parsePositiveInteger(this.env.REVIEW_MAX_CONCURRENCY),
+          reviewerTimeoutMs: parsePositiveInteger(this.env.REVIEWER_TIMEOUT_MS),
           reasoningEffort: input.reasoningEffort,
           full: input.full,
           onEvent: (event) => this.recordProgress(event, reportProgress),
@@ -140,9 +153,17 @@ export class ReviewerAgent extends Agent<AppEnv, ReviewerAgentState> {
     report: (phase: string, force?: boolean) => void,
   ): void {
     let phase: string | null = null;
-    if (event.type === "phase") phase = event.phase ?? null;
-    if (event.type === "turn_start") phase = `Reviewing code (pass ${event.turnIndex ?? 1})`;
-    if (event.type === "tool_start") phase = toolPhase(event.toolName);
+    const actor = event.model ? shortModelName(event.model) : undefined;
+    if (event.type === "phase") phase = actor ? `${event.phase} (${actor})` : event.phase ?? null;
+    if (event.type === "turn_start") {
+      phase = event.role === "orchestrator"
+        ? `Synthesizing findings${actor ? ` (${actor})` : ""}`
+        : `Reviewing code${actor ? ` (${actor})` : ""}, pass ${event.turnIndex ?? 1}`;
+    }
+    if (event.type === "tool_start") {
+      const tool = toolPhase(event.toolName);
+      phase = actor ? `${tool} (${actor})` : tool;
+    }
     if (!phase) return;
     this.setState({ ...this.state, phase });
     report(phase);
@@ -165,4 +186,15 @@ function toolPhase(toolName: string | undefined): string {
     case "submit_review": return "Finalizing findings";
     default: return "Inspecting repository context";
   }
+}
+
+function parsePositiveInteger(value: string | undefined): number | undefined {
+  if (!value) return undefined;
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : undefined;
+}
+
+function shortModelName(model: string): string {
+  const parts = model.split("/");
+  return parts.at(-1) || model;
 }
