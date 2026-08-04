@@ -40,13 +40,25 @@ export class ReviewerAgent extends Agent<AppEnv, ReviewerAgentState> {
 
   async runCodeReview(input: RunCodeReviewInput): Promise<ReviewResult> {
     if (this.activeReview) {
-      throw new Error("A review is already running for this user");
+      throw new Error("A review is already running in this review agent");
     }
 
     this.activeReview = this.performReview(input);
-    return this.activeReview.finally(() => {
-      this.activeReview = null;
+    return this.activeReview.finally(async () => {
+      try {
+        await this.deleteStorage();
+      } finally {
+        this.activeReview = null;
+      }
     });
+  }
+
+  private async deleteStorage(): Promise<void> {
+    try {
+      await this.ctx.storage.deleteAll();
+    } catch (error) {
+      console.warn("Failed to delete review storage", error);
+    }
   }
 
   private async performReview(input: RunCodeReviewInput): Promise<ReviewResult> {

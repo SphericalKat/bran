@@ -37,6 +37,32 @@ function authorization(overrides: Partial<GitHubAuthorization> = {}): GitHubAuth
   };
 }
 
+function generatedReview(): GeneratedReview {
+  return {
+    review: {
+      findings: [],
+      overall_correctness: "patch is correct",
+      overall_explanation: "No blocking problems found.",
+    },
+    model: "anthropic/test-model",
+    headSha: "head-sha",
+    metrics: {
+      inputTokens: 10,
+      outputTokens: 5,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+      totalTokens: 15,
+      cost: 0.01,
+      turns: 1,
+      toolCalls: 1,
+      durationSeconds: 2,
+      reused: false,
+    },
+    cacheMarker: null,
+    reusedReview: false,
+  };
+}
+
 function createStore(current: GitHubAuthorization | null = null) {
   return {
     createAuthorizationNonce: vi.fn().mockResolvedValue("nonce"),
@@ -183,29 +209,7 @@ describe("GitHub", () => {
   });
 
   it("runs an automated review job using the OAuth token", async () => {
-    const generated: GeneratedReview = {
-      review: {
-        findings: [],
-        overall_correctness: "patch is correct",
-        overall_explanation: "No blocking problems found.",
-      },
-      model: "anthropic/test-model",
-      headSha: "head-sha",
-      metrics: {
-        inputTokens: 10,
-        outputTokens: 5,
-        cacheReadTokens: 0,
-        cacheWriteTokens: 0,
-        totalTokens: 15,
-        cost: 0.01,
-        turns: 1,
-        toolCalls: 1,
-        durationSeconds: 2,
-        reused: false,
-      },
-      cacheMarker: null,
-      reusedReview: false,
-    };
+    const generated = generatedReview();
     const runReview = vi.fn().mockResolvedValue(generated);
     const github = createGitHub(createStore(authorization()), {
       runReview,
@@ -222,6 +226,40 @@ describe("GitHub", () => {
       githubLogin: "octocat",
       progress: undefined,
     });
+  });
+
+  it("uses a unique review agent for every automated review", async () => {
+    const firstId = { toString: () => "first-review" } as DurableObjectId;
+    const secondId = { toString: () => "second-review" } as DurableObjectId;
+    const runCodeReview = vi.fn().mockResolvedValue(generatedReview());
+    const reviewAgentNamespace = {
+      newUniqueId: vi.fn()
+        .mockReturnValueOnce(firstId)
+        .mockReturnValueOnce(secondId),
+      get: vi.fn().mockReturnValue({ runCodeReview }),
+    };
+    const github = new GitHub({
+      ...env,
+      REVIEWER_AGENT: reviewAgentNamespace,
+    } as unknown as AppEnv, {
+      getStore: () => createStore(authorization()),
+    });
+
+    await Promise.all([
+      github.reviewPullRequest({
+        telegramUserId: "123",
+        prUrl: "https://github.com/octo/repo/pull/42",
+      }),
+      github.reviewPullRequest({
+        telegramUserId: "123",
+        prUrl: "https://github.com/octo/repo/pull/43",
+      }),
+    ]);
+
+    expect(reviewAgentNamespace.newUniqueId).toHaveBeenCalledTimes(2);
+    expect(reviewAgentNamespace.get).toHaveBeenNthCalledWith(1, firstId);
+    expect(reviewAgentNamespace.get).toHaveBeenNthCalledWith(2, secondId);
+    expect(runCodeReview).toHaveBeenCalledTimes(2);
   });
 
   it("does not run an automated review without a GitHub connection", async () => {

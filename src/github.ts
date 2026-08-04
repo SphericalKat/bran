@@ -65,13 +65,15 @@ export class GitHub {
     this.fetch = dependencies.fetch ?? globalThis.fetch;
     this.now = dependencies.now ?? Date.now;
     this.publish = dependencies.publish ?? postReviewComment;
-    this.runReview = dependencies.runReview ?? ((input) =>
-      env.REVIEWER_AGENT.getByName(input.telegramUserId).runCodeReview({
+    this.runReview = dependencies.runReview ?? ((input) => {
+      const reviewAgentId = env.REVIEWER_AGENT.newUniqueId();
+      return env.REVIEWER_AGENT.get(reviewAgentId).runCodeReview({
         prUrl: input.prUrl,
         githubToken: input.githubToken,
         githubLogin: input.githubLogin,
         progress: input.progress,
-      }));
+      });
+    });
     this.getStore = dependencies.getStore ?? ((userId) => env.GITHUB_AUTH_STORE.getByName(userId));
   }
 

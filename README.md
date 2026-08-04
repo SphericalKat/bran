@@ -36,7 +36,9 @@ sequenceDiagram
     Bot->>User: Report completion or failure
 ```
 
-The Worker receives Telegram webhook requests at its root URL. Account credentials and short-lived OAuth nonces are stored per Telegram user in `GitHubAuthStore`. A `ReviewerAgent` instance serializes reviews for each user, records progress, and keeps the request alive while the coding agent runs.
+The Worker receives Telegram webhook requests at its root URL. `GitHubAuthStore` stores account credentials and short-lived OAuth nonces for each Telegram user.
+
+Each review runs in a unique `ReviewerAgent` instance. The instance records progress, keeps the request alive, and deletes its storage when the run ends.
 
 For each review, Bran:
 
@@ -254,7 +256,6 @@ wrangler.jsonc   Cloudflare Worker and Durable Object configuration
 - **Telegram does not respond:** Check `getWebhookInfo`, verify the Worker URL is HTTPS, and inspect Cloudflare Worker logs with `pnpm exec wrangler tail`.
 - **GitHub rejects a review:** Confirm the connected user can access the repository and that the OAuth app or token has permission to write pull-request reviews.
 - **The model request fails:** Check `REVIEW_MODEL`, confirm `LLM_API_KEY` belongs to that provider or proxy, and inspect the Worker logs.
-- **A review is already running:** Bran permits one active automated review per Telegram user. Wait for the current review to finish before starting another.
 - **An inline finding appears only in the summary:** GitHub permits inline comments only on lines represented by the pull-request diff. Bran keeps unplaceable findings in the review summary.
 
 ## License
