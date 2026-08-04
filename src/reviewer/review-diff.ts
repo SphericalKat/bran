@@ -1,6 +1,6 @@
 import type { NoteEntry } from "./types";
 
-const REVIEW_SHA = /^\s*<!--\s*hodor:sha:([a-f0-9]{40})\s*-->/i;
+const REVIEW_SHA = /^\s*<!--\s*(?:fortagram|hodor):sha:([a-f0-9]{40})\s*-->/i;
 
 export type ReviewDiffMode = "full" | "incremental";
 

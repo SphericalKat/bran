@@ -1,5 +1,5 @@
 {
-	"name": "fortagram",
+	"name": "bran",
 	"version": "0.0.0",
 	"private": true,
 	"scripts": {
@@ -10,10 +10,10 @@
 		"cf-typegen": "wrangler types"
 	},
 	"devDependencies": {
-		"@cloudflare/vitest-pool-workers": "^0.12.4",
+		"@cloudflare/vitest-pool-workers": "^0.20.0",
 		"@types/node": "^26.1.2",
-		"typescript": "^5.5.2",
-		"vitest": "~3.2.0",
+		"typescript": "^7.0.0",
+		"vitest": "~4.1.0",
 		"wrangler": "^4.118.0"
 	},
 	"dependencies": {

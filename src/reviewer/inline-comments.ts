@@ -11,14 +11,13 @@ interface DiffHunk {
 export function buildInlineComments(
   review: ReviewOutput,
   diff: string,
-  workspacePath?: string | null,
 ): { comments: GitHubReviewComment[]; skipped: ReviewFinding[] } {
   const hunks = parseRightSideHunks(diff);
   const comments: GitHubReviewComment[] = [];
   const skipped: ReviewFinding[] = [];
 
   for (const finding of review.findings) {
-    const path = repositoryPath(finding.code_location.absolute_file_path, workspacePath);
+    const path = finding.code_location.path;
     const requested = finding.code_location.line_range;
     const hunk = hunks.find((candidate) =>
       candidate.path === path
@@ -75,15 +74,6 @@ function parseRightSideHunks(diff: string): DiffHunk[] {
   }
 
   return hunks;
-}
-
-function repositoryPath(path: string, workspacePath?: string | null): string {
-  const normalized = path.replaceAll("\\", "/");
-  const workspace = workspacePath?.replaceAll("\\", "/").replace(/\/+$/, "");
-  if (workspace && normalized.startsWith(`${workspace}/`)) {
-    return normalized.slice(workspace.length + 1);
-  }
-  return normalized.replace(/^\/+/, "");
 }
 
 function renderInlineFinding(finding: ReviewFinding): string {

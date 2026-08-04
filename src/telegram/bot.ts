@@ -64,7 +64,7 @@ function createTelegramBot(dependencies: TelegramBotDependencies): Bot {
     const userId = await requirePrivateUser(ctx);
     if (!userId) return;
     const authorizationUrl = await dependencies.github.connectionUrl(userId);
-    await ctx.reply(`Authorize Fortagram to act as your GitHub user:\n${authorizationUrl}`);
+    await ctx.reply(`Authorize Bran to act as your GitHub user:\n${authorizationUrl}`);
   });
 
   bot.command("token", async (ctx) => {
@@ -103,7 +103,7 @@ function createTelegramBot(dependencies: TelegramBotDependencies): Bot {
     const userId = await requirePrivateUser(ctx);
     if (!userId) return;
     await dependencies.github.disconnect(userId);
-    await ctx.reply("GitHub credentials removed from Fortagram.");
+    await ctx.reply("GitHub credentials removed from Bran.");
   });
 
   bot.command("review", async (ctx) => {

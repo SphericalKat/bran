@@ -2,7 +2,7 @@ import { Type } from "@earendil-works/pi-ai";
 import type { ReviewOutput, ReviewPriority } from "./types";
 
 const LOCATION_SCHEMA = Type.Object({
-  absolute_file_path: Type.String({ minLength: 1 }),
+  path: Type.String({ minLength: 1 }),
   line_range: Type.Object({
     start: Type.Integer({ minimum: 1 }),
     end: Type.Integer({ minimum: 1 }),
@@ -49,8 +49,8 @@ export function validateReviewOutput(value: unknown): ReviewOutput {
       throw new Error(`${label} title and priority must use the same P0-P3 value`);
     }
     const location = finding.code_location;
-    if (!location || !isAbsolutePath(location.absolute_file_path)) {
-      throw new Error(`${label} must use an absolute file path`);
+    if (!location || !isRepositoryPath(location.path)) {
+      throw new Error(`${label} must use a repository-relative path`);
     }
     if (!Number.isSafeInteger(location.line_range?.start) ||
       !Number.isSafeInteger(location.line_range?.end) ||
@@ -72,6 +72,7 @@ function priorityFromTitle(title: string): ReviewPriority | null {
   return match ? Number(match[1]) as ReviewPriority : null;
 }
 
-function isAbsolutePath(path: string): boolean {
-  return path.startsWith("/") || /^[A-Za-z]:[\\/]/.test(path);
+function isRepositoryPath(path: string): boolean {
+  if (!path || path !== path.trim() || path.startsWith("/") || path.includes("\\")) return false;
+  return path.split("/").every((part) => part !== "" && part !== "." && part !== "..");
 }

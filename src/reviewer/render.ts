@@ -4,13 +4,11 @@
 
 import type { ReviewFinding, ReviewOutput } from "./types";
 
-export const HODOR_REVIEW_MARKER = "<!-- hodor-review -->";
-
 /**
  * Render a ReviewOutput into clean markdown for posting as a PR/MR comment.
  */
 export function renderMarkdown(review: ReviewOutput): string {
-  const lines: string[] = [HODOR_REVIEW_MARKER];
+  const lines: string[] = [];
 
   // Group findings by priority
   const critical: ReviewFinding[] = []; // P0, P1
@@ -78,7 +76,7 @@ export function renderMarkdown(review: ReviewOutput): string {
 }
 
 export function renderSummaryMarkdown(review: ReviewOutput): string {
-  const lines: string[] = [HODOR_REVIEW_MARKER];
+  const lines: string[] = [];
 
   const counts = { critical: 0, important: 0, minor: 0 };
   for (const f of review.findings) {
@@ -87,7 +85,6 @@ export function renderSummaryMarkdown(review: ReviewOutput): string {
     else counts.minor++;
   }
 
-  lines.push("");
   lines.push("| Category | Count |");
   lines.push("| --- | ---: |");
   lines.push(`| Critical (P0/P1) | ${counts.critical} |`);
@@ -122,26 +119,9 @@ function formatFinding(f: ReviewFinding): string {
 }
 
 function formatLocation(loc: {
-  absolute_file_path: string;
+  path: string;
   line_range: { start: number; end: number };
 }): string {
-  // Strip common workspace prefixes to get a clean relative path
-  let filePath = loc.absolute_file_path;
-
-  // GitLab CI: /builds/owner/repo/src/file.ts → src/file.ts
-  const buildsMatch = filePath.match(/\/builds\/[^/]+\/[^/]+\/(.+)/);
-  if (buildsMatch) {
-    filePath = buildsMatch[1];
-  }
-  // GitHub Actions / generic workspace
-  else if (filePath.includes("/workspace/")) {
-    filePath = filePath.slice(filePath.indexOf("/workspace/") + "/workspace/".length);
-  }
-  // Temp review dirs: /tmp/hodor-review-<id>/src/file.ts → src/file.ts
-  else {
-    filePath = filePath.replace(/^.*\/hodor-review-[^/]+\//, "");
-  }
-
   const { start, end } = loc.line_range;
-  return start === end ? `${filePath}:${start}` : `${filePath}:${start}-${end}`;
+  return start === end ? `${loc.path}:${start}` : `${loc.path}:${start}-${end}`;
 }

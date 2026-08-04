@@ -3,7 +3,7 @@ import { Type } from "@earendil-works/pi-ai";
 import { streamSimple } from "@earendil-works/pi-ai/compat";
 import { createGitHubApi, type GitHubApi, type GitHubContent } from "./github-api";
 import { logger } from "./utils/logger";
-import { formatMetricsMarkdown, printMetrics } from "./metrics";
+import { printMetrics } from "./metrics";
 import { resolveModel, selectReasoningEffort } from "./model";
 import { parsePrUrl } from "./platform";
 import { buildPrReviewPrompt } from "./prompt";
@@ -50,10 +50,8 @@ export interface AgentProgressEvent {
 export interface ReviewResult {
   review: ReviewOutput;
   model: string;
-  metricsFooter: string | null;
   headSha: string;
   metrics: ReviewMetrics;
-  workspacePath: "/workspace";
   cacheMarker: null;
   reusedReview: false;
 }
@@ -64,7 +62,6 @@ export async function reviewPr(options: {
   reasoningEffort?: string;
   reviewInstructions?: string | null;
   additionalInstructions?: string | null;
-  includeMetricsFooter?: boolean;
   full?: boolean;
   targetBranchOverride?: string;
   githubToken?: string;
@@ -77,7 +74,6 @@ export async function reviewPr(options: {
     prUrl,
     model: modelName = DEFAULT_MODEL,
     reasoningEffort,
-    includeMetricsFooter = false,
     full = false,
     targetBranchOverride,
     llmApiKey,
@@ -233,10 +229,8 @@ export async function reviewPr(options: {
   return {
     review: submittedReview,
     model: modelName,
-    metricsFooter: includeMetricsFooter ? formatMetricsMarkdown(metrics) : null,
     headSha,
     metrics,
-    workspacePath: "/workspace",
     cacheMarker: null,
     reusedReview: false,
   };

@@ -45,7 +45,6 @@ function generatedReview(): GeneratedReview {
       overall_explanation: "No blocking problems found.",
     },
     model: "anthropic/test-model",
-    metricsFooter: "metrics",
     headSha: "head-sha",
     metrics: {
       inputTokens: 10,
@@ -59,7 +58,6 @@ function generatedReview(): GeneratedReview {
       durationSeconds: 2,
       reused: false,
     },
-    workspacePath: "/workspace",
     cacheMarker: null,
     reusedReview: false,
   };

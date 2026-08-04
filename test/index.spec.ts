@@ -12,17 +12,17 @@ import type { AppEnv } from "../src/env";
 // `Request` to pass to `worker.fetch()`.
 const IncomingRequest = Request<unknown, IncomingRequestCfProperties>;
 
-describe("Fortagram worker", () => {
+describe("Bran worker", () => {
 	it("responds with a health check (unit style)", async () => {
 		const request = new IncomingRequest("http://example.com");
 		const ctx = createExecutionContext();
 		const response = await worker.fetch(request, env as AppEnv, ctx);
 		await waitOnExecutionContext(ctx);
-		expect(await response.text()).toBe("Fortagram is running");
+		expect(await response.text()).toBe("Bran is running");
 	});
 
 	it("responds with a health check (integration style)", async () => {
 		const response = await SELF.fetch("https://example.com");
-		expect(await response.text()).toBe("Fortagram is running");
+		expect(await response.text()).toBe("Bran is running");
 	});
 });
