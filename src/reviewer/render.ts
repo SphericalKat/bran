@@ -85,14 +85,16 @@ export function renderSummaryMarkdown(review: ReviewOutput): string {
     else counts.minor++;
   }
 
-  lines.push("| Category | Count |");
-  lines.push("| --- | ---: |");
-  lines.push(`| Critical (P0/P1) | ${counts.critical} |`);
-  lines.push(`| Important (P2) | ${counts.important} |`);
-  lines.push(`| Minor (P3) | ${counts.minor} |`);
+  if (review.findings.length > 0) {
+    lines.push("| Category | Count |");
+    lines.push("| --- | ---: |");
+    if (counts.critical > 0) lines.push(`| Critical (P0/P1) | ${counts.critical} |`);
+    if (counts.important > 0) lines.push(`| Important (P2) | ${counts.important} |`);
+    if (counts.minor > 0) lines.push(`| Minor (P3) | ${counts.minor} |`);
+    lines.push("");
+  }
 
   const isCorrect = review.overall_correctness === "patch is correct";
-  lines.push("");
   lines.push(`**Overall verdict**: ${isCorrect ? "Patch is correct" : "Patch has blocking issues"}`);
   lines.push("");
   lines.push(`**Explanation**: ${review.overall_explanation}`);

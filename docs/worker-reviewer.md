@@ -9,7 +9,32 @@ Set these Worker secrets before deploying:
 - `TELEGRAM_BOT_TOKEN`
 - `LLM_API_KEY`
 
-`REVIEW_MODEL` is optional. It defaults to `anthropic/claude-sonnet-4-5-20250929` and accepts a `provider/model-id` value supported by `pi-ai`.
+`REVIEW_MODEL` is the optional fallback for one model. It defaults to `anthropic/claude-sonnet-4-5-20250929`.
+
+For ensemble reviews, set:
+
+```dotenv
+REVIEW_MODELS=purroxy-kimi/kimi-k3,purroxy-glm/glm-5.2,purroxy/vertex/gemini-3.6-flash,purroxy/openai/gpt-5.6-sol,purroxy-alibaba/qwen3.8-max
+REVIEW_ORCHESTRATOR_MODEL=purroxy/openai/gpt-5.6-sol
+REVIEW_MAX_CONCURRENCY=3
+REVIEWER_TIMEOUT_MS=180000
+```
+
+You can use a local Pi provider named `purroxy-<route>`. Bran maps this name to the matching Purroxy route.
+
+Bran uses OpenAI-compatible completions for unknown routes. A known route can use a specialized API.
+
+The default ensemble includes all five routes above. Bran ignores an unavailable reviewer when another reviewer succeeds.
+
+Bran loads GitHub metadata and the diff once. All reviewers use the same immutable head SHA.
+
+Bran runs a limited number of reviewers concurrently. Reviewer requests do not retry provider failures.
+
+The orchestrator treats successful reviews as untrusted leads. It uses the same source and diff tools to verify each claim.
+
+The orchestrator removes duplicate findings and merges supported findings. Bran publishes only this final review.
+
+If the orchestrator fails, Bran uses the first successful review.
 
 OAuth is optional. Enable `/connect` with `GITHUB_OAUTH_CLIENT_ID`, `GITHUB_OAUTH_CLIENT_SECRET`, `GITHUB_OAUTH_STATE_SECRET`, and `GITHUB_CALLBACK_URL`.
 

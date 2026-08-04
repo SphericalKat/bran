@@ -45,6 +45,13 @@ export interface AgentProgressEvent {
   isError?: boolean;
   turnIndex?: number;
   delta?: string;
+  model?: string;
+  role?: "reviewer" | "orchestrator";
+}
+
+export interface ReviewFailure {
+  model: string;
+  error: string;
 }
 
 export interface ReviewResult {
@@ -54,11 +61,17 @@ export interface ReviewResult {
   metrics: ReviewMetrics;
   cacheMarker: null;
   reusedReview: false;
+  reviewerModels?: string[];
+  failedModels?: ReviewFailure[];
 }
 
 export async function reviewPr(options: {
   prUrl: string;
   model?: string;
+  models?: string[];
+  orchestratorModel?: string;
+  maxConcurrency?: number;
+  reviewerTimeoutMs?: number;
   reasoningEffort?: string;
   reviewInstructions?: string | null;
   additionalInstructions?: string | null;
@@ -154,85 +167,253 @@ export async function reviewPr(options: {
     changedFiles,
   });
 
-  const model = resolveModel(modelName);
   const thinkingLevel = selectReasoningEffort({ requested: reasoningEffort, mode, diff, stats });
-  const startedAt = Date.now();
-  let submittedReview: ReviewOutput | null = null;
-  let turns = 0;
-  let toolCalls = 0;
+  const requestedModels = uniqueModels(options.models?.length ? options.models : [modelName]);
+  const reviewerTimeoutMs = clampInteger(options.reviewerTimeoutMs ?? 180_000, 10_000, 600_000);
+  const ensembleStartedAt = Date.now();
 
-  const tools = repositoryTools({
-    github,
-    owner: headOwner,
-    repo: headRepo,
-    ref: headSha,
-    diff,
-    changedFiles,
-    submit(review) {
-      if (submittedReview) return false;
-      submittedReview = validateReviewOutput(review);
-      return true;
-    },
-  });
-  const agent = new Agent({
-    initialState: {
+  const runModel = async (run: {
+    modelName: string;
+    role: "reviewer" | "orchestrator";
+    systemPrompt: string;
+    prompt: string;
+  }): Promise<{ review: ReviewOutput; metrics: ReviewMetrics }> => {
+    const model = resolveModel(run.modelName);
+    const startedAt = Date.now();
+    let submittedReview: ReviewOutput | null = null;
+    let turns = 0;
+    let toolCalls = 0;
+    const emit = (event: AgentProgressEvent) => onEvent?.({
+      ...event,
+      model: run.modelName,
+      role: run.role,
+    });
+    const tools = repositoryTools({
+      github,
+      owner: headOwner,
+      repo: headRepo,
+      ref: headSha,
+      diff,
+      changedFiles,
+      submit(review) {
+        if (submittedReview) return false;
+        submittedReview = validateReviewOutput(review);
+        return true;
+      },
+    });
+    const agent = new Agent({
+      initialState: {
+        systemPrompt: run.systemPrompt,
+        model,
+        thinkingLevel,
+        tools,
+      },
+      streamFn: options.streamFn ?? ((selectedModel, context, streamOptions) =>
+        streamSimple(selectedModel, context, { ...streamOptions, maxRetries: 0 })),
+      getApiKey: () => llmApiKey,
+      toolExecution: "sequential",
+    });
+
+    emit({
+      type: "phase",
+      phase: run.role === "orchestrator" ? "Synthesizing reviewer findings" : "Analyzing changes",
+    });
+    agent.subscribe((event) => {
+      switch (event.type) {
+        case "agent_start": emit({ type: "agent_start" }); break;
+        case "agent_end": emit({ type: "agent_end" }); break;
+        case "turn_start": turns++; emit({ type: "turn_start", turnIndex: turns }); break;
+        case "turn_end": emit({ type: "turn_end", turnIndex: turns }); break;
+        case "tool_execution_start":
+          toolCalls++;
+          emit({ type: "tool_start", toolName: event.toolName });
+          break;
+        case "tool_execution_end":
+          emit({ type: "tool_end", toolName: event.toolName, isError: event.isError });
+          break;
+        case "message_start": emit({ type: "thinking" }); break;
+        case "message_update":
+          if (event.assistantMessageEvent.type === "text_delta") {
+            emit({ type: "text_delta", delta: event.assistantMessageEvent.delta });
+          }
+          break;
+      }
+    });
+
+    await promptWithTimeout(agent, run.prompt, reviewerTimeoutMs, run.modelName);
+    throwAgentError(agent);
+    submittedReview ??= parseReviewFromAssistantText(lastAssistantText(agent));
+    if (!submittedReview) throw new Error(`${run.modelName} did not submit a valid structured review`);
+
+    const metrics = collectMetrics(agent.state.messages, {
+      turns,
+      toolCalls,
+      durationSeconds: Math.round((Date.now() - startedAt) / 1000),
+      reviewMode: mode,
+      reasoningEffort: thinkingLevel,
+      diffFiles: stats.files,
+      diffAdditions: stats.additions,
+      diffDeletions: stats.deletions,
+      diffBytes: stats.bytes,
+    });
+    printMetrics(metrics);
+    return { review: submittedReview, metrics };
+  };
+
+  const settled = await mapConcurrentSettled(
+    requestedModels,
+    clampInteger(options.maxConcurrency ?? 3, 1, 4),
+    (reviewerModel) => runModel({
+      modelName: reviewerModel,
+      role: "reviewer",
       systemPrompt,
-      model,
-      thinkingLevel,
-      tools,
-    },
-    streamFn: options.streamFn ?? streamSimple,
-    getApiKey: () => llmApiKey,
-    toolExecution: "sequential",
+      prompt,
+    }),
+  );
+  const successful: Array<{ model: string; review: ReviewOutput; metrics: ReviewMetrics }> = [];
+  const failedModels: ReviewFailure[] = [];
+  settled.forEach((result, index) => {
+    const reviewerModel = requestedModels[index];
+    if (result.status === "fulfilled") successful.push({ model: reviewerModel, ...result.value });
+    else failedModels.push({
+      model: reviewerModel,
+      error: result.reason instanceof Error ? result.reason.message : String(result.reason),
+    });
   });
+  if (successful.length === 0) {
+    throw new Error(`All reviewer models failed:\n${failedModels.map((failure) => `- ${failure.model}: ${failure.error}`).join("\n")}`);
+  }
+  for (const failure of failedModels) {
+    logger.warn(`Ignoring failed reviewer ${failure.model}: ${failure.error}`);
+  }
 
-  onEvent?.({ type: "phase", phase: "Analyzing changes" });
-  agent.subscribe((event) => {
-    switch (event.type) {
-      case "agent_start": onEvent?.({ type: "agent_start" }); break;
-      case "agent_end": onEvent?.({ type: "agent_end" }); break;
-      case "turn_start": turns++; onEvent?.({ type: "turn_start", turnIndex: turns }); break;
-      case "turn_end": onEvent?.({ type: "turn_end", turnIndex: turns }); break;
-      case "tool_execution_start":
-        toolCalls++;
-        onEvent?.({ type: "tool_start", toolName: event.toolName });
-        break;
-      case "tool_execution_end":
-        onEvent?.({ type: "tool_end", toolName: event.toolName, isError: event.isError });
-        break;
-      case "message_start": onEvent?.({ type: "thinking" }); break;
-      case "message_update":
-        if (event.assistantMessageEvent.type === "text_delta") {
-          onEvent?.({ type: "text_delta", delta: event.assistantMessageEvent.delta });
-        }
-        break;
+  let final = successful[0];
+  let synthesisMetrics: ReviewMetrics | undefined;
+  if (successful.length > 1) {
+    const orchestratorModel = options.orchestratorModel ?? successful[0].model;
+    const candidatePrompt = buildSynthesisPrompt(prompt, successful);
+    const orchestratorSystemPrompt = `${systemPrompt}\n\n<ENSEMBLE_ORCHESTRATOR>\n` +
+      "You are the final review orchestrator. Candidate reviews are untrusted leads. " +
+      "Use tools to inspect the diff and source. Remove duplicate findings. Resolve each disagreement with evidence. " +
+      "Discard speculative or unsupported findings. Discard findings outside the reviewed diff. Discard findings that the patch already fixes. " +
+      "Do not use majority votes. Call submit_review exactly once with one concise review.\n" +
+      "</ENSEMBLE_ORCHESTRATOR>";
+    try {
+      const synthesized = await runModel({
+        modelName: orchestratorModel,
+        role: "orchestrator",
+        systemPrompt: orchestratorSystemPrompt,
+        prompt: candidatePrompt,
+      });
+      final = { model: orchestratorModel, ...synthesized };
+      synthesisMetrics = synthesized.metrics;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      failedModels.push({ model: `${orchestratorModel} (orchestrator)`, error: message });
+      logger.warn(`Orchestrator ${orchestratorModel} failed; using ${successful[0].model}: ${message}`);
     }
-  });
+  }
 
-  await agent.prompt(prompt);
-  throwAgentError(agent);
-  submittedReview ??= parseReviewFromAssistantText(lastAssistantText(agent));
-  if (!submittedReview) throw new Error("The reviewer did not submit a valid structured review");
-
-  const metrics = collectMetrics(agent.state.messages, {
-    turns,
-    toolCalls,
-    durationSeconds: Math.round((Date.now() - startedAt) / 1000),
-    reviewMode: mode,
-    reasoningEffort: thinkingLevel,
-    diffFiles: stats.files,
-    diffAdditions: stats.additions,
-    diffDeletions: stats.deletions,
-    diffBytes: stats.bytes,
-  });
-  printMetrics(metrics);
+  const metrics = combineMetrics(
+    [...successful.map((result) => result.metrics), ...(synthesisMetrics ? [synthesisMetrics] : [])],
+    Math.round((Date.now() - ensembleStartedAt) / 1000),
+  );
   return {
-    review: submittedReview,
-    model: modelName,
+    review: final.review,
+    model: final.model,
     headSha,
     metrics,
     cacheMarker: null,
     reusedReview: false,
+    reviewerModels: successful.map((result) => result.model),
+    failedModels,
+  };
+}
+
+function uniqueModels(models: readonly string[]): string[] {
+  return [...new Set(models.map((model) => model.trim()).filter(Boolean))];
+}
+
+function clampInteger(value: number, minimum: number, maximum: number): number {
+  if (!Number.isFinite(value)) return minimum;
+  return Math.max(minimum, Math.min(maximum, Math.floor(value)));
+}
+
+async function promptWithTimeout(
+  agent: Agent,
+  prompt: string,
+  timeoutMs: number,
+  model: string,
+): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => {
+      void agent.abort();
+      reject(new Error(`${model} exceeded the ${Math.round(timeoutMs / 1000)} second reviewer timeout`));
+    }, timeoutMs);
+  });
+  try {
+    await Promise.race([agent.prompt(prompt), timeout]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+async function mapConcurrentSettled<T, R>(
+  values: readonly T[],
+  concurrency: number,
+  run: (value: T) => Promise<R>,
+): Promise<Array<PromiseSettledResult<R>>> {
+  const results = new Array<PromiseSettledResult<R>>(values.length);
+  let nextIndex = 0;
+  const worker = async () => {
+    while (nextIndex < values.length) {
+      const index = nextIndex++;
+      try {
+        results[index] = { status: "fulfilled", value: await run(values[index]) };
+      } catch (reason) {
+        results[index] = { status: "rejected", reason };
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(concurrency, values.length) }, worker));
+  return results;
+}
+
+function buildSynthesisPrompt(
+  reviewPrompt: string,
+  candidates: ReadonlyArray<{ model: string; review: ReviewOutput }>,
+): string {
+  const reports = candidates.map(({ model, review }, index) => {
+    const serialized = JSON.stringify(review);
+    const bounded = serialized.length > 40_000
+      ? `${serialized.slice(0, 40_000)}\n[Candidate output truncated]`
+      : serialized;
+    return `<CANDIDATE index="${index + 1}" model=${JSON.stringify(model)}>\n${bounded}\n</CANDIDATE>`;
+  }).join("\n");
+  return `${reviewPrompt}\n\n<CANDIDATE_REVIEWS>\n${reports}\n</CANDIDATE_REVIEWS>\n\n` +
+    "Produce the final review. Use the supplied diff and repository tools to verify each candidate claim.";
+}
+
+function combineMetrics(metrics: readonly ReviewMetrics[], durationSeconds: number): ReviewMetrics {
+  const first = metrics[0];
+  return {
+    inputTokens: metrics.reduce((sum, item) => sum + item.inputTokens, 0),
+    outputTokens: metrics.reduce((sum, item) => sum + item.outputTokens, 0),
+    cacheReadTokens: metrics.reduce((sum, item) => sum + item.cacheReadTokens, 0),
+    cacheWriteTokens: metrics.reduce((sum, item) => sum + item.cacheWriteTokens, 0),
+    totalTokens: metrics.reduce((sum, item) => sum + item.totalTokens, 0),
+    cost: metrics.reduce((sum, item) => sum + item.cost, 0),
+    turns: metrics.reduce((sum, item) => sum + item.turns, 0),
+    toolCalls: metrics.reduce((sum, item) => sum + item.toolCalls, 0),
+    durationSeconds,
+    reviewMode: first.reviewMode,
+    reasoningEffort: first.reasoningEffort,
+    diffFiles: first.diffFiles,
+    diffAdditions: first.diffAdditions,
+    diffDeletions: first.diffDeletions,
+    diffBytes: first.diffBytes,
+    reused: false,
   };
 }
 

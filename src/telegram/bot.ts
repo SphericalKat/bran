@@ -40,7 +40,7 @@ function createTelegramBot(dependencies: TelegramBotDependencies): Bot {
   const bot = new Bot(dependencies.token, {
     client: {
       canUseWebhookReply: () => false,
-      fetch: dependencies.fetch,
+      fetch: dependencies.fetch as NonNullable<BotConfig<Context>["client"]>["fetch"],
     },
     botInfo: dependencies.botInfo,
   });

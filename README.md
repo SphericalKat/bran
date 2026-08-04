@@ -46,8 +46,10 @@ For each review, Bran:
 2. Looks for a Bran review marker from an earlier run. If one exists and the commits are comparable, it reviews only the newer changes; otherwise it reviews the full pull request.
 3. Excludes generated dependency lockfiles, Markdown files, and test-data directories from the embedded diff.
 4. Gives the model bounded tools to read source files, search the repository, inspect a file's diff, and return a structured review.
-5. Converts findings on changed lines into GitHub inline comments. Findings that cannot be placed inline remain in the summary.
-6. Posts `REQUEST_CHANGES` when findings exist and `APPROVE` when none exist, then updates the Telegram progress message.
+5. Runs each configured reviewer against the shared snapshot. Bran ignores a failed reviewer when another reviewer succeeds.
+6. Sends successful reviews to a separate orchestrator. The orchestrator verifies claims, removes duplicates, and returns one final review.
+7. Converts final findings on changed lines into GitHub inline comments. Unplaced findings remain in the summary.
+8. Posts `REQUEST_CHANGES` when findings exist. Otherwise, it posts `APPROVE`. It then updates the Telegram progress message.
 
 ## Prerequisites
 
@@ -96,11 +98,16 @@ Edit the `vars` section of `wrangler.jsonc`:
 "vars": {
   "GITHUB_OAUTH_CLIENT_ID": "your-github-oauth-client-id",
   "GITHUB_CALLBACK_URL": "https://<worker>.<subdomain>.workers.dev/auth/github/callback",
-  "REVIEW_MODEL": "openai/<model>"
+  "REVIEW_MODELS": "purroxy-kimi/kimi-k3,purroxy-glm/glm-5.2,purroxy/vertex/gemini-3.6-flash,purroxy/openai/gpt-5.6-sol,purroxy-alibaba/qwen3.8-max",
+  "REVIEW_ORCHESTRATOR_MODEL": "purroxy/openai/gpt-5.6-sol",
+  "REVIEW_MAX_CONCURRENCY": "3",
+  "REVIEWER_TIMEOUT_MS": "180000"
 }
 ```
 
-`REVIEW_MODEL` accepts a provider-qualified model name. Examples include `openai/<model>` and `anthropic/<model>`. `LLM_API_KEY` must be valid for the selected provider.
+`REVIEW_MODELS` lists the reviewers. `REVIEW_ORCHESTRATOR_MODEL` merges their successful reviews.
+
+Bran ignores failed reviewers and publishes one final review. See [Worker reviewer](docs/worker-reviewer.md) for advanced settings.
 
 ### 5. Add production secrets
 
@@ -133,7 +140,11 @@ openssl rand -base64 32
 | `GITHUB_OAUTH_CLIENT_SECRET` | For OAuth | Exchanges GitHub authorization codes for user tokens |
 | `GITHUB_OAUTH_STATE_SECRET` | For OAuth | Signs short-lived OAuth state values |
 | `GITHUB_CALLBACK_URL` | For OAuth | Receives GitHub's authorization callback |
-| `REVIEW_MODEL` | No | Overrides the built-in default review model |
+| `REVIEW_MODEL` | No | Single-model fallback when `REVIEW_MODELS` is unset |
+| `REVIEW_MODELS` | No | Comma-separated reviewer models |
+| `REVIEW_ORCHESTRATOR_MODEL` | No | Merges successful reviews; defaults to the first successful reviewer model |
+| `REVIEW_MAX_CONCURRENCY` | No | Limits concurrent reviewers to 1–4; defaults to 3 |
+| `REVIEWER_TIMEOUT_MS` | No | Limits each request to 10 seconds–10 minutes; defaults to 180 seconds |
 
 OAuth variables are optional only if every user connects with `/token` instead of `/connect`.
 
