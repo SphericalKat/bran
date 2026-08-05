@@ -98,7 +98,7 @@ Edit the `vars` section of `wrangler.jsonc`:
 "vars": {
   "GITHUB_OAUTH_CLIENT_ID": "your-github-oauth-client-id",
   "GITHUB_CALLBACK_URL": "https://<worker>.<subdomain>.workers.dev/auth/github/callback",
-  "REVIEW_MODELS": "purroxy-kimi/kimi-k3,purroxy-glm/glm-5.2,purroxy/vertex/gemini-3.6-flash,purroxy/openai/gpt-5.6-sol,purroxy-alibaba/qwen3.8-max",
+  "REVIEW_MODELS": "purroxy/openai/gpt-5.6-sol",
   "REVIEW_ORCHESTRATOR_MODEL": "purroxy/openai/gpt-5.6-sol",
   "REVIEW_MAX_CONCURRENCY": "3",
   "REVIEW_TIMEOUT_MS": "600000"

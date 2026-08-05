@@ -40,7 +40,7 @@
 	"vars": {
 		"GITHUB_OAUTH_CLIENT_ID": "Ov23liSXE1OC5z0pfJ4S",
 		"GITHUB_CALLBACK_URL": "https://fortagram.amolele.workers.dev/auth/github/callback",
-		"REVIEW_MODELS": "purroxy-kimi/kimi-k3,purroxy-glm/glm-5.2,purroxy/vertex/gemini-3.6-flash,purroxy/openai/gpt-5.6-sol,purroxy-alibaba/qwen3.8-max",
+		"REVIEW_MODELS": "purroxy/openai/gpt-5.6-sol",
 		"REVIEW_ORCHESTRATOR_MODEL": "purroxy/openai/gpt-5.6-sol",
 		"REVIEW_MAX_CONCURRENCY": "3",
 		"REVIEW_TIMEOUT_MS": "600000"

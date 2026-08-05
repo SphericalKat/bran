@@ -35,6 +35,7 @@ export function parseModelString(value: string): { provider: string; modelId: st
     };
   }
   if (/^(gpt|o[134])|openai/i.test(model)) return { provider: "openai", modelId: model };
+  if (/^grok(?:-|$)/i.test(model)) return { provider: "xai", modelId: model };
   return { provider: "anthropic", modelId: model };
 }
 

@@ -14,7 +14,7 @@ Set these Worker secrets before deploying:
 For ensemble reviews, set:
 
 ```dotenv
-REVIEW_MODELS=purroxy-kimi/kimi-k3,purroxy-glm/glm-5.2,purroxy/vertex/gemini-3.6-flash,purroxy/openai/gpt-5.6-sol,purroxy-alibaba/qwen3.8-max
+REVIEW_MODELS=purroxy/openai/gpt-5.6-sol
 REVIEW_ORCHESTRATOR_MODEL=purroxy/openai/gpt-5.6-sol
 REVIEW_MAX_CONCURRENCY=3
 REVIEW_TIMEOUT_MS=600000
@@ -24,7 +24,7 @@ You can use a local Pi provider named `purroxy-<route>`. Bran maps this name to 
 
 Bran uses OpenAI-compatible completions for unknown routes. A known route can use a specialized API.
 
-The default ensemble includes all five routes above. Bran ignores an unavailable reviewer when another reviewer succeeds.
+The default configuration uses only GPT-5.6 Sol. Add other reviewers through `REVIEW_MODELS`. Bran ignores an unavailable reviewer when another reviewer succeeds.
 
 Bran loads GitHub metadata and the diff once. All reviewers use the same immutable head SHA.
 

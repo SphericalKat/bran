@@ -18,6 +18,8 @@ const routes = {
   openai: { path: "openai", api: "openai-completions", metadataProviders: ["openai"] },
   "openai-priority": { path: "openai/priority", api: "openai-completions", metadataProviders: ["openai"] },
   "openai-flex": { path: "openai/flex", api: "openai-completions", metadataProviders: ["openai"] },
+  xai: { path: "xai", api: "openai-completions", metadataProviders: ["xai"] },
+  anthropic: { path: "anthropic", api: "anthropic-messages", metadataProviders: ["anthropic"] },
   vertex: { path: "google/vertex", api: "google-generative-ai", metadataProviders: ["google"] },
   "vertex-priority": { path: "google/vertex/priority", api: "google-generative-ai", metadataProviders: ["google"] },
   kimi: { path: "kimi", api: "openai-completions", metadataProviders: ["moonshotai"] },
@@ -60,7 +62,7 @@ export function resolvePurroxyModel(value: string, lookup?: PurroxyModelLookup):
   const api = apiForModel(routeName, route.api, modelId);
   const compat = api === "openai-completions"
     ? openAICompatibility(routeName, modelId, reasoning, upstream)
-    : undefined;
+    : upstream?.compat;
   return {
     id: modelId,
     name: `${routeName}/${modelId}`,
@@ -101,15 +103,20 @@ function findUpstreamModel(
 }
 
 function inferFallbackLimits(modelId: string): { contextWindow: number; maxTokens: number } {
-  if (/^(?:qwen3\.8-max|kimi\/kimi-k3|kimi-k3)$/i.test(modelId)) {
+  if (/^(?:qwen3\.8-max|kimi\/kimi-k3|kimi-k3|claude-(?:fable|opus|sonnet)-5)$/i.test(modelId)) {
     return { contextWindow: 1_048_576, maxTokens: 131_072 };
   }
+  if (/^grok-4\.5$/i.test(modelId)) return { contextWindow: 500_000, maxTokens: 500_000 };
   return { contextWindow: 128_000, maxTokens: 16_384 };
 }
 
 function inferReasoning(routeName: string, modelId: string): boolean {
   const id = modelId.toLowerCase();
   if (routeName.startsWith("openai")) return /^(?:o[134](?:-|$)|gpt-5(?:[.-]|$))/.test(id);
+  if (routeName === "xai") return /^grok-(?:[4-9]|build)/.test(id);
+  if (routeName === "anthropic") {
+    return /^claude-(?:fable|opus|sonnet|haiku)-(?:[4-9]|3-(?:7|[89]))/.test(id);
+  }
   if (routeName.startsWith("vertex")) {
     return /^(?:gemini-(?:2\.5|[3-9])|gemma-[4-9])/.test(id) && !/(?:embedding|lyria)/.test(id);
   }
@@ -137,6 +144,7 @@ function openAICompatibility(
   if (inherited) return inherited;
   if (!reasoning) return undefined;
   if (routeName === "glm") return { supportsReasoningEffort: true, thinkingFormat: "zai" };
+  if (routeName === "xai") return { supportsReasoningEffort: true, thinkingFormat: "openai" };
 
   const id = modelId.toLowerCase();
   if (/(?:^|\/)kimi-k[3-9](?:$|[-.])/.test(id)) {
