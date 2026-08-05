@@ -33,6 +33,19 @@ describe("Purroxy models", () => {
       provider: "purroxy",
       modelId: "alibaba/qwen3.8-max",
     });
+    expect(parseModelString("purroxy-xai/grok-4.5")).toEqual({
+      provider: "purroxy",
+      modelId: "xai/grok-4.5",
+    });
+    expect(parseModelString("purroxy-anthropic/claude-sonnet-5")).toEqual({
+      provider: "purroxy",
+      modelId: "anthropic/claude-sonnet-5",
+    });
+    expect(parseModelString("grok-4.5")).toEqual({ provider: "xai", modelId: "grok-4.5" });
+    expect(parseModelString("claude-sonnet-5")).toEqual({
+      provider: "anthropic",
+      modelId: "claude-sonnet-5",
+    });
   });
 
   it("routes gpt-5.6-sol through Responses so tools retain reasoning", () => {
@@ -88,7 +101,18 @@ describe("Purroxy models", () => {
     });
   });
 
-  it("resolves Anthropic, Google, and Kimi routes", () => {
+  it("resolves xAI, Anthropic, Google, and Kimi routes", () => {
+    expect(resolvePurroxyModel("xai/grok-4.5")).toMatchObject({
+      api: "openai-completions",
+      baseUrl: "https://main.purroxy.org/xai",
+      reasoning: true,
+      compat: { supportsReasoningEffort: true, thinkingFormat: "openai" },
+    });
+    expect(resolvePurroxyModel("anthropic/claude-sonnet-5")).toMatchObject({
+      api: "anthropic-messages",
+      baseUrl: "https://main.purroxy.org/anthropic",
+      reasoning: true,
+    });
     expect(resolvePurroxyModel("glm-anthropic/glm-5.2")).toMatchObject({
       api: "anthropic-messages",
       reasoning: true,
