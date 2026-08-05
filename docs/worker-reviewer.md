@@ -17,7 +17,7 @@ For ensemble reviews, set:
 REVIEW_MODELS=purroxy-kimi/kimi-k3,purroxy-glm/glm-5.2,purroxy/vertex/gemini-3.6-flash,purroxy/openai/gpt-5.6-sol,purroxy-alibaba/qwen3.8-max
 REVIEW_ORCHESTRATOR_MODEL=purroxy/openai/gpt-5.6-sol
 REVIEW_MAX_CONCURRENCY=3
-REVIEWER_TIMEOUT_MS=180000
+REVIEW_TIMEOUT_MS=600000
 ```
 
 You can use a local Pi provider named `purroxy-<route>`. Bran maps this name to the matching Purroxy route.
@@ -29,6 +29,8 @@ The default ensemble includes all five routes above. Bran ignores an unavailable
 Bran loads GitHub metadata and the diff once. All reviewers use the same immutable head SHA.
 
 Bran runs a limited number of reviewers concurrently. Reviewer requests do not retry provider failures.
+
+`REVIEW_TIMEOUT_MS` limits the complete task. The limit includes all reviewers and the orchestrator.
 
 The orchestrator treats successful reviews as untrusted leads. It uses the same source and diff tools to verify each claim.
 

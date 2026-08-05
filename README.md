@@ -101,7 +101,7 @@ Edit the `vars` section of `wrangler.jsonc`:
   "REVIEW_MODELS": "purroxy-kimi/kimi-k3,purroxy-glm/glm-5.2,purroxy/vertex/gemini-3.6-flash,purroxy/openai/gpt-5.6-sol,purroxy-alibaba/qwen3.8-max",
   "REVIEW_ORCHESTRATOR_MODEL": "purroxy/openai/gpt-5.6-sol",
   "REVIEW_MAX_CONCURRENCY": "3",
-  "REVIEWER_TIMEOUT_MS": "180000"
+  "REVIEW_TIMEOUT_MS": "600000"
 }
 ```
 
@@ -144,7 +144,7 @@ openssl rand -base64 32
 | `REVIEW_MODELS` | No | Comma-separated reviewer models |
 | `REVIEW_ORCHESTRATOR_MODEL` | No | Merges successful reviews; defaults to the first successful reviewer model |
 | `REVIEW_MAX_CONCURRENCY` | No | Limits concurrent reviewers to 1–4; defaults to 3 |
-| `REVIEWER_TIMEOUT_MS` | No | Limits each request to 10 seconds–10 minutes; defaults to 180 seconds |
+| `REVIEW_TIMEOUT_MS` | No | Limits the complete review task; defaults to 10 minutes |
 
 OAuth variables are optional only if every user connects with `/token` instead of `/connect`.
 

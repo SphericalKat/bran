@@ -12,7 +12,7 @@ export interface RuntimeSecrets {
   REVIEW_MODELS?: string;
   REVIEW_ORCHESTRATOR_MODEL?: string;
   REVIEW_MAX_CONCURRENCY?: string;
-  REVIEWER_TIMEOUT_MS?: string;
+  REVIEW_TIMEOUT_MS?: string;
 }
 
 export type AppEnv = Cloudflare.Env & RuntimeSecrets & {
