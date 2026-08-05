@@ -32,6 +32,10 @@ Bran runs a limited number of reviewers concurrently. Reviewer requests do not r
 
 `REVIEW_TIMEOUT_MS` limits the complete task. The limit includes all reviewers and the orchestrator.
 
+Bran reserves part of this time for the orchestrator. It stops unfinished reviewers when the reviewer time ends.
+
+The orchestrator merges every completed review. The published summary states how many reviewer models missed the time limit.
+
 The orchestrator treats successful reviews as untrusted leads. It uses the same source and diff tools to verify each claim.
 
 The orchestrator removes duplicate findings and merges supported findings. Bran publishes only this final review.

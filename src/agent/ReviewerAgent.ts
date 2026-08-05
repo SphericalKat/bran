@@ -111,11 +111,15 @@ export class ReviewerAgent extends Agent<AppEnv, ReviewerAgentState> {
         this.setState({ ...this.state, phase: "Posting review to GitHub" });
         reportProgress("Posting review to GitHub", true);
         await progressUpdates;
+        const timedOutReviewers = generated.failedModels?.filter((failure) => failure.timedOut).length ?? 0;
         const published = await postReviewStructured({
           prUrl: input.prUrl,
           review: generated.review,
           githubToken: input.githubToken,
           headSha: generated.headSha,
+          notice: timedOutReviewers > 0
+            ? `Skipped ${timedOutReviewers} reviewer model${timedOutReviewers === 1 ? "" : "s"} because they did not finish within the shared time budget.`
+            : undefined,
         });
         if (!published.success) {
           throw new Error(published.error ?? "GitHub rejected the generated review");
