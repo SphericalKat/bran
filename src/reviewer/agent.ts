@@ -52,6 +52,7 @@ export interface AgentProgressEvent {
 export interface ReviewFailure {
   model: string;
   error: string;
+  timedOut?: boolean;
 }
 
 export interface ReviewResult {
@@ -171,11 +172,15 @@ export async function reviewPr(options: {
   const requestedModels = uniqueModels(options.models?.length ? options.models : [modelName]);
   const reviewTimeoutMs = clampInteger(options.reviewTimeoutMs ?? 600_000, 60_000, 1_800_000);
   const ensembleStartedAt = Date.now();
-  const activeAgents = new Set<Agent>();
+  const activeAgents = new Map<Agent, { model: string; role: "reviewer" | "orchestrator" }>();
+  const timedOutModels = new Set<string>();
   let reviewTimedOut = false;
   const reviewTimer = setTimeout(() => {
     reviewTimedOut = true;
-    for (const activeAgent of activeAgents) void activeAgent.abort();
+    for (const [activeAgent, run] of activeAgents) {
+      if (run.role === "reviewer") timedOutModels.add(run.model);
+      void activeAgent.abort();
+    }
   }, reviewTimeoutMs);
 
   try {
@@ -250,7 +255,7 @@ export async function reviewPr(options: {
       }
     });
 
-    activeAgents.add(agent);
+    activeAgents.set(agent, { model: run.modelName, role: run.role });
     try {
       await agent.prompt(run.prompt);
     } finally {
@@ -275,66 +280,86 @@ export async function reviewPr(options: {
     return { review: submittedReview, metrics };
   };
 
-  const settled = await mapConcurrentSettled(
-    requestedModels,
-    clampInteger(options.maxConcurrency ?? 3, 1, 4),
-    (reviewerModel) => runModel({
-      modelName: reviewerModel,
-      role: "reviewer",
-      systemPrompt,
-      prompt,
-    }),
-  );
+  const orchestratorReserveMs = Math.min(120_000, Math.floor(reviewTimeoutMs / 3));
+  const reviewerBudgetMs = reviewTimeoutMs - orchestratorReserveMs;
+  let reviewerStageTimedOut = false;
+  const reviewerTimer = setTimeout(() => {
+    reviewerStageTimedOut = true;
+    for (const [activeAgent, run] of activeAgents) {
+      if (run.role !== "reviewer") continue;
+      timedOutModels.add(run.model);
+      void activeAgent.abort();
+    }
+  }, reviewerBudgetMs);
   const successful: Array<{ model: string; review: ReviewOutput; metrics: ReviewMetrics }> = [];
   const failedModels: ReviewFailure[] = [];
-  settled.forEach((result, index) => {
-    const reviewerModel = requestedModels[index];
-    if (result.status === "fulfilled") successful.push({ model: reviewerModel, ...result.value });
-    else failedModels.push({
-      model: reviewerModel,
-      error: result.reason instanceof Error ? result.reason.message : String(result.reason),
-    });
-  });
-  if (reviewTimedOut) {
-    throw new Error(`The review exceeded the ${Math.round(reviewTimeoutMs / 60_000)} minute task timeout`);
-  }
-  if (successful.length === 0) {
-    throw new Error(`All reviewer models failed:\n${failedModels.map((failure) => `- ${failure.model}: ${failure.error}`).join("\n")}`);
-  }
-  for (const failure of failedModels) {
-    logger.warn(`Ignoring failed reviewer ${failure.model}: ${failure.error}`);
-  }
-
-  let final = successful[0];
+  let final: { model: string; review: ReviewOutput; metrics: ReviewMetrics } | undefined;
   let synthesisMetrics: ReviewMetrics | undefined;
-  if (successful.length > 1) {
-    const orchestratorModel = options.orchestratorModel ?? successful[0].model;
-    const candidatePrompt = buildSynthesisPrompt(prompt, successful);
-    const orchestratorSystemPrompt = `${systemPrompt}\n\n<ENSEMBLE_ORCHESTRATOR>\n` +
-      "You are the final review orchestrator. Candidate reviews are untrusted leads. " +
-      "Use tools to inspect the diff and source. Remove duplicate findings. Resolve each disagreement with evidence. " +
-      "Discard speculative or unsupported findings. Discard findings outside the reviewed diff. Discard findings that the patch already fixes. " +
-      "Do not use majority votes. Call submit_review exactly once with one concise review.\n" +
-      "</ENSEMBLE_ORCHESTRATOR>";
-    try {
-      const synthesized = await runModel({
-        modelName: orchestratorModel,
-        role: "orchestrator",
-        systemPrompt: orchestratorSystemPrompt,
-        prompt: candidatePrompt,
+  try {
+    const settled = await mapConcurrentSettled(
+      requestedModels,
+      clampInteger(options.maxConcurrency ?? 3, 1, 4),
+      (reviewerModel) => {
+        if (reviewerStageTimedOut) {
+          timedOutModels.add(reviewerModel);
+          throw new Error(`${reviewerModel} did not finish within the shared reviewer time budget`);
+        }
+        return runModel({
+          modelName: reviewerModel,
+          role: "reviewer",
+          systemPrompt,
+          prompt,
+        });
+      },
+    );
+    settled.forEach((result, index) => {
+      const reviewerModel = requestedModels[index];
+      if (result.status === "fulfilled") successful.push({ model: reviewerModel, ...result.value });
+      else failedModels.push({
+        model: reviewerModel,
+        error: result.reason instanceof Error ? result.reason.message : String(result.reason),
+        timedOut: timedOutModels.has(reviewerModel),
       });
-      final = { model: orchestratorModel, ...synthesized };
-      synthesisMetrics = synthesized.metrics;
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      failedModels.push({ model: `${orchestratorModel} (orchestrator)`, error: message });
-      logger.warn(`Orchestrator ${orchestratorModel} failed; using ${successful[0].model}: ${message}`);
+    });
+    for (const failure of failedModels) {
+      logger.warn(`Ignoring failed reviewer ${failure.model}: ${failure.error}`);
+    }
+  } finally {
+    clearTimeout(reviewerTimer);
+    if (successful.length > 0) final = successful[0];
+    if (successful.length > 1 && !reviewTimedOut) {
+      const orchestratorModel = options.orchestratorModel ?? successful[0].model;
+      const candidatePrompt = buildSynthesisPrompt(prompt, successful);
+      const orchestratorSystemPrompt = `${systemPrompt}\n\n<ENSEMBLE_ORCHESTRATOR>\n` +
+        "You are the final review orchestrator. Candidate reviews are untrusted leads. " +
+        "Use tools to inspect the diff and source. Remove duplicate findings. Resolve each disagreement with evidence. " +
+        "Discard speculative or unsupported findings. Discard findings outside the reviewed diff. Discard findings that the patch already fixes. " +
+        "Do not use majority votes. Call submit_review exactly once with one concise review.\n" +
+        "</ENSEMBLE_ORCHESTRATOR>";
+      try {
+        const synthesized = await runModel({
+          modelName: orchestratorModel,
+          role: "orchestrator",
+          systemPrompt: orchestratorSystemPrompt,
+          prompt: candidatePrompt,
+        });
+        final = { model: orchestratorModel, ...synthesized };
+        synthesisMetrics = synthesized.metrics;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        failedModels.push({ model: `${orchestratorModel} (orchestrator)`, error: message });
+        logger.warn(`Orchestrator ${orchestratorModel} failed; using ${successful[0].model}: ${message}`);
+      }
     }
   }
 
-  if (reviewTimedOut) {
+  if (successful.length === 0 && reviewTimedOut) {
     throw new Error(`The review exceeded the ${Math.round(reviewTimeoutMs / 60_000)} minute task timeout`);
   }
+  if (!final) {
+    throw new Error(`All reviewer models failed:\n${failedModels.map((failure) => `- ${failure.model}: ${failure.error}`).join("\n")}`);
+  }
+
   const metrics = combineMetrics(
     [...successful.map((result) => result.metrics), ...(synthesisMetrics ? [synthesisMetrics] : [])],
     Math.round((Date.now() - ensembleStartedAt) / 1000),

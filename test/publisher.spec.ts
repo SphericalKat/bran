@@ -119,9 +119,13 @@ describe("structured review publishing", () => {
         overall_explanation: "No issues found.",
       },
       githubApi,
+      notice: "Skipped 2 reviewer models because they did not finish within the shared time budget.",
     });
 
     expect(submitted?.event).toBe("APPROVE");
     expect(submitted?.comments).toBeUndefined();
+    expect(submitted?.body).toContain(
+      "Skipped 2 reviewer models because they did not finish within the shared time budget.",
+    );
   });
 });

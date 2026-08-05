@@ -82,6 +82,7 @@ export async function postReviewStructured(opts: {
   headSha?: string | null;
   reconcileDiscussions?: boolean;
   cacheMarker?: string | null;
+  notice?: string;
   skipSummary?: boolean;
 }): Promise<PostCommentResult> {
   const {
@@ -92,6 +93,7 @@ export async function postReviewStructured(opts: {
     event,
     headSha,
     cacheMarker,
+    notice,
     skipSummary = false,
   } = opts;
 
@@ -117,6 +119,7 @@ export async function postReviewStructured(opts: {
     if (inline.skipped.length > 0) {
       body += renderUnplacedFindings(inline.skipped);
     }
+    if (notice) body += `\n\n> ${notice}`;
     if (headSha) body = `<!-- fortagram:sha:${headSha} -->\n${body}`;
     if (cacheMarker) body = body.replace("\n", `\n${cacheMarker}\n`);
     await api.submitPullRequestReview(parsed.owner, parsed.repo, parsed.prNumber, {
