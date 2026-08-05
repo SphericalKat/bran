@@ -103,7 +103,7 @@ export class ReviewerAgent extends Agent<AppEnv, ReviewerAgentState> {
           models: configuredModels,
           orchestratorModel: input.orchestratorModel ?? this.env.REVIEW_ORCHESTRATOR_MODEL,
           maxConcurrency: parsePositiveInteger(this.env.REVIEW_MAX_CONCURRENCY),
-          reviewerTimeoutMs: parsePositiveInteger(this.env.REVIEWER_TIMEOUT_MS),
+          reviewTimeoutMs: parsePositiveInteger(this.env.REVIEW_TIMEOUT_MS),
           reasoningEffort: input.reasoningEffort,
           full: input.full,
           onEvent: (event) => this.recordProgress(event, reportProgress),

@@ -71,7 +71,7 @@ export async function reviewPr(options: {
   models?: string[];
   orchestratorModel?: string;
   maxConcurrency?: number;
-  reviewerTimeoutMs?: number;
+  reviewTimeoutMs?: number;
   reasoningEffort?: string;
   reviewInstructions?: string | null;
   additionalInstructions?: string | null;
@@ -169,15 +169,25 @@ export async function reviewPr(options: {
 
   const thinkingLevel = selectReasoningEffort({ requested: reasoningEffort, mode, diff, stats });
   const requestedModels = uniqueModels(options.models?.length ? options.models : [modelName]);
-  const reviewerTimeoutMs = clampInteger(options.reviewerTimeoutMs ?? 180_000, 10_000, 600_000);
+  const reviewTimeoutMs = clampInteger(options.reviewTimeoutMs ?? 600_000, 60_000, 1_800_000);
   const ensembleStartedAt = Date.now();
+  const activeAgents = new Set<Agent>();
+  let reviewTimedOut = false;
+  const reviewTimer = setTimeout(() => {
+    reviewTimedOut = true;
+    for (const activeAgent of activeAgents) void activeAgent.abort();
+  }, reviewTimeoutMs);
 
+  try {
   const runModel = async (run: {
     modelName: string;
     role: "reviewer" | "orchestrator";
     systemPrompt: string;
     prompt: string;
   }): Promise<{ review: ReviewOutput; metrics: ReviewMetrics }> => {
+    if (reviewTimedOut) {
+      throw new Error(`The review exceeded the ${Math.round(reviewTimeoutMs / 60_000)} minute task timeout`);
+    }
     const model = resolveModel(run.modelName);
     const startedAt = Date.now();
     let submittedReview: ReviewOutput | null = null;
@@ -240,7 +250,12 @@ export async function reviewPr(options: {
       }
     });
 
-    await promptWithTimeout(agent, run.prompt, reviewerTimeoutMs, run.modelName);
+    activeAgents.add(agent);
+    try {
+      await agent.prompt(run.prompt);
+    } finally {
+      activeAgents.delete(agent);
+    }
     throwAgentError(agent);
     submittedReview ??= parseReviewFromAssistantText(lastAssistantText(agent));
     if (!submittedReview) throw new Error(`${run.modelName} did not submit a valid structured review`);
@@ -280,6 +295,9 @@ export async function reviewPr(options: {
       error: result.reason instanceof Error ? result.reason.message : String(result.reason),
     });
   });
+  if (reviewTimedOut) {
+    throw new Error(`The review exceeded the ${Math.round(reviewTimeoutMs / 60_000)} minute task timeout`);
+  }
   if (successful.length === 0) {
     throw new Error(`All reviewer models failed:\n${failedModels.map((failure) => `- ${failure.model}: ${failure.error}`).join("\n")}`);
   }
@@ -314,6 +332,9 @@ export async function reviewPr(options: {
     }
   }
 
+  if (reviewTimedOut) {
+    throw new Error(`The review exceeded the ${Math.round(reviewTimeoutMs / 60_000)} minute task timeout`);
+  }
   const metrics = combineMetrics(
     [...successful.map((result) => result.metrics), ...(synthesisMetrics ? [synthesisMetrics] : [])],
     Math.round((Date.now() - ensembleStartedAt) / 1000),
@@ -328,6 +349,9 @@ export async function reviewPr(options: {
     reviewerModels: successful.map((result) => result.model),
     failedModels,
   };
+  } finally {
+    clearTimeout(reviewTimer);
+  }
 }
 
 function uniqueModels(models: readonly string[]): string[] {
@@ -337,26 +361,6 @@ function uniqueModels(models: readonly string[]): string[] {
 function clampInteger(value: number, minimum: number, maximum: number): number {
   if (!Number.isFinite(value)) return minimum;
   return Math.max(minimum, Math.min(maximum, Math.floor(value)));
-}
-
-async function promptWithTimeout(
-  agent: Agent,
-  prompt: string,
-  timeoutMs: number,
-  model: string,
-): Promise<void> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const timeout = new Promise<never>((_resolve, reject) => {
-    timer = setTimeout(() => {
-      void agent.abort();
-      reject(new Error(`${model} exceeded the ${Math.round(timeoutMs / 1000)} second reviewer timeout`));
-    }, timeoutMs);
-  });
-  try {
-    await Promise.race([agent.prompt(prompt), timeout]);
-  } finally {
-    if (timer) clearTimeout(timer);
-  }
 }
 
 async function mapConcurrentSettled<T, R>(
