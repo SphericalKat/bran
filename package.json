@@ -17,7 +17,7 @@
 		"wrangler": "^4.118.0"
 	},
 	"dependencies": {
-		"@earendil-works/pi-agent-core": "^0.83.0",
+		"@earendil-works/pi-agent-core": "^0.85.0",
 		"@earendil-works/pi-ai": "^0.83.0",
 		"@octokit/rest": "^22.0.1",
 		"agents": "^0.20.1",
